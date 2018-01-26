@@ -1,5 +1,7 @@
 
-use regex::Regex;
+use std::collections::HashMap;
+
+use regex::{Captures, Regex};
 
 #[derive(Debug)]
 pub enum Token {
@@ -8,49 +10,125 @@ pub enum Token {
     Identifier(String),
 }
 
+macro_rules! grammar {
+    ($($key:ident -> $value:expr;)*) => {lazy_static! {
+        static ref GRAMMAR: HashMap<&'static str, &'static str> = {
+            let mut grammar = HashMap::new();
+            $(
+                grammar.insert(stringify!($key), $value);
+            )*
+            grammar
+        };
+    }}
+}
+
+grammar! {
+    // Incomplete
+    delimiter -> r"(:?[|() \t\n\r]|$)";
+
+    // Incomplete
+    identifier -> r"{initial}{subsequent}*";
+
+    initial -> r"(:?{letter}|{special_initial})";
+
+    letter -> r"[a-zA-Z]";
+
+    special_initial -> r"[!$%&*:/<=>?@^_~]";
+
+    subsequent -> r"(:?{initial}|{digit}|{special_subsequent})";
+
+    digit -> r"[0-9]";
+
+    explicit_sign -> r"[+-]";
+
+    special_subsequent -> r"(:?{explicit_sign}|[.@])";
+}
+
 lazy_static! {
-    // Incomplete
-    static ref delimiter: String = format!(r"(:?[|() \t\n\r]|$)");
+    static ref REGEX_STRINGS: HashMap<&'static str, String> = {
+        let re = Regex::new(r"\{([a-z_]*)\}").unwrap();
+        let mut done = false;
+        let mut res: HashMap<&'static str, String> = HashMap::new();
+        while !done {
+            done = true;
+            let mut progress = false;
+            println!("Begin loop");
+            for (class, expression) in GRAMMAR.iter() {
+                let mut success = true;
+                if res.contains_key(class) {
+                    continue;
+                }
+                let replacement = re.replace_all(expression, |m:&Captures| {
+                    let key = m.get(1).unwrap().as_str();
+                    print!("Replacing key {}... ", key);
+                    match res.get(key) {
+                        Some(value) => {
+                            println!("Success!");
+                            value.to_string()
+                        },
+                        None => {
+                            println!("Failure!");
+                            success = false;
+                            String::new()
+                        }
+                    }
+                });
+                println!("Tried expanding {:?} (success = {})", class, success);
+                if success {
+                    res.insert(class, replacement.into_owned());
+                    progress = true;
+                } else {
+                    done = false;
+                }
+            }
+            println!("End loop");
+            println!("Keys: {:?}", res.keys().collect::<Vec<_>>());
+            assert!(progress);
+        }
+        res
+    };
+}
 
-    // Incomplete
-    static ref identifier: String = format!(r"{initial}{subsequent}*",
-        initial=&*initial, subsequent=&*subsequent);
+fn regex_class(class: &'static str) -> Regex {
+    Regex::new(REGEX_STRINGS.get(class).unwrap()).unwrap()
+}
 
-    static ref initial: String = format!(r"(:?{letter}|{special_initial})",
-        letter=&*letter, special_initial=&*special_initial);
+//#[test]
+pub fn test_regex_strings_gen() {
+    ::lazy_static::initialize(&REGEX_STRINGS);
+}
 
-    static ref letter: String = format!(r"[a-zA-Z]");
-
-    static ref special_initial: String = format!(r"[!$%&*:/<=>?@^_~]");
-
-    static ref subsequent: String = format!(
-        r"(:?{initial}|{digit}|{special_subsequent})", initial=&*initial,
-        digit=&*digit, special_subsequent=&*special_subsequent);
-
-    static ref digit: String = format!(r"[0-9]");
-
-    static ref explicit_sign: String = format!(r"[+-]");
-
-    static ref special_subsequent: String = format!(r"(:?{explicit_sign}|[.@])",
-        explicit_sign=&*explicit_sign);
+#[test]
+fn test_valid_regex() {
+    for class in GRAMMAR.keys() {
+        let string = REGEX_STRINGS.get(class)
+                        .expect(&format!("REGEX_STRINGS doesn't contain key \
+                        {:?}", class));
+        Regex::new(string).expect(
+            &format!("Regex for {} doesn't compile (regex = {:?})", class,
+            string));
+    }
 }
 
 #[test]
 fn test_identifier_0() {
-    let re = Regex::new(&*identifier).unwrap();
+    //let re = Regex::new(&*identifier).unwrap();
+    let re = regex_class("identifier");
     let m = re.find(":dT$+.8!#").unwrap();
     assert_eq!((m.start(), m.end()), (0, 8));
 }
 
 #[test]
 fn test_identifier_1() {
-    let re = Regex::new(&*identifier).unwrap();
+    //let re = Regex::new(&*identifier).unwrap();
+    let re = regex_class("identifier");
     assert!(!re.is_match("54"));
 }
 
 #[test]
 fn test_identifier_2() {
-    let re = Regex::new(&*identifier).unwrap();
+    //let re = Regex::new(&*identifier).unwrap();
+    let re = regex_class("identifier");
     let m = re.find(".+-09A@3 x").unwrap();
     assert_eq!((m.start(), m.end()), (5, 8));
 }
