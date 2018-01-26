@@ -8,6 +8,7 @@ pub enum Token {
     LeftParen,
     RightParen,
     Identifier(String),
+    Number(i64),
 }
 
 #[derive(Debug)]
@@ -32,7 +33,7 @@ grammar! {
     // Incomplete
     delimiter -> r"(:?[|() \t\n\r]|$)";
     // Incomplete
-    token -> r"(?P<token><<identifier>>|\(|\))";
+    token -> r"(?P<token><<identifier>>|<<number>>|\(|\))";
     // Incomplete
     intraspace_whitespace -> r"[ \t]";
     // Incomplete
@@ -41,7 +42,7 @@ grammar! {
     atmosphere -> r"<<whitespace>>";
     intertoken_space -> r"<<atmosphere>>*";
     // Incomplete
-    identifier -> r"<<initial>><<subsequent>>*";
+    identifier -> r"(?P<identifier><<initial>><<subsequent>>*)";
     initial -> r"(:?<<letter>>|<<special_initial>>)";
     letter -> r"[a-zA-Z]";
     special_initial -> r"[!$%&*:/<=>?@^_~]";
@@ -49,6 +50,8 @@ grammar! {
     digit -> r"[0-9]";
     explicit_sign -> r"[+-]";
     special_subsequent -> r"(:?<<explicit_sign>>|[.@])";
+    // Incomplete
+    number -> r"(?P<uint>[0-9]+)";
 }
 
 lazy_static! {
@@ -99,16 +102,30 @@ fn read_token(input: &str) -> Option<(Token, &str)> {
         Some(x) => x,
     };
 
-    let m = captures.name("token").unwrap();
-    let rest = &input[m.end()..];
-
-    let token = match m.as_str() {
-        "(" => Token::LeftParen,
-        ")" => Token::RightParen,
-        ident => Token::Identifier(ident.to_string()),
-    };
+    let end = captures.get(0).unwrap().end();
+    let rest = &input[end..];
+    let token = captures_to_token(captures);
 
     Some((token, rest))
+}
+
+fn captures_to_token(captures: Captures) -> Token {
+    println!("captures_to_token");
+    let m = captures.name("token").unwrap();
+    match m.as_str() {
+        "(" => return Token::LeftParen,
+        ")" => return Token::RightParen,
+        _ => {},
+    };
+    if let Some(m) = captures.name("identifier") {
+        return Token::Identifier(m.as_str().to_string());
+    }
+    if let Some(m) = captures.name("uint") {
+        let n = i64::from_str_radix(m.as_str(), 10).unwrap();
+        return Token::Number(n);
+    }
+    panic!("{:?} recognized as token, but doesn't match any specific class of\
+        token", captures.get(0).unwrap().as_str())
 }
 
 impl<'a> Lexer<'a> {

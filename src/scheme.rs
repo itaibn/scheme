@@ -1,11 +1,12 @@
 
 use std::iter::DoubleEndedIterator;
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum Scheme {
-    Symbol(String),
     Nil,
     Cons(Box<Scheme>, Box<Scheme>),
+    Symbol(String),
+    Int(i64),
 }
 
 impl Scheme {
@@ -58,6 +59,17 @@ impl Scheme {
     }
 
     fn apply(self, args: Vec<Scheme>) -> Scheme {
-        Scheme::list_from_iter(args)
+        if self == Scheme::Symbol("+".to_string()) {
+            let mut total = 0;
+            for arg in args {
+                match arg {
+                    Scheme::Int(n) => total += n,
+                    _ => {},
+                }
+            }
+            Scheme::Int(total)
+        } else {
+            Scheme::Cons(Box::new(self), Box::new(Scheme::list_from_iter(args)))
+        }
     }
 }

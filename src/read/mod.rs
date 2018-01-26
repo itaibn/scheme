@@ -46,10 +46,9 @@ impl<'a> Reader<'a> {
 
     pub fn read_expr(&mut self) -> Result<Scheme, &'static str> {
         match self.read_token()? {
-            Some(Token::Identifier(ident)) => {
-                Ok(Scheme::Symbol(ident))
-            },
+            Some(Token::Identifier(ident)) => Ok(Scheme::Symbol(ident)),
             Some(Token::LeftParen) => self.read_list(),
+            Some(Token::Number(n)) => Ok(Scheme::Int(n)),
             _ => Err("Invalid expression"),
         }
     }
