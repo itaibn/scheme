@@ -4,13 +4,7 @@ extern crate lazy_static;
 extern crate regex;
 
 mod read;
-
-#[derive(Debug)]
-pub enum Scheme {
-    Symbol(String),
-    Nil,
-    Cons(Box<Scheme>, Box<Scheme>),
-}
+mod scheme;
 
 fn main() {
     let mut input_buffer = String::new();
