@@ -110,7 +110,6 @@ fn read_token(input: &str) -> Option<(Token, &str)> {
 }
 
 fn captures_to_token(captures: Captures) -> Token {
-    println!("captures_to_token");
     let m = captures.name("token").unwrap();
     match m.as_str() {
         "(" => return Token::LeftParen,

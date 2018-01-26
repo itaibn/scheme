@@ -59,7 +59,7 @@ impl Scheme {
     }
 
     fn apply(self, args: Vec<Scheme>) -> Scheme {
-        if self == Scheme::Symbol("+".to_string()) {
+        if self == Scheme::Symbol("sum".to_string()) {
             let mut total = 0;
             for arg in args {
                 match arg {
