@@ -1,4 +1,5 @@
 
+use std::fmt::Debug;
 use std::iter::DoubleEndedIterator;
 
 #[derive(Debug, PartialEq)]
@@ -7,6 +8,34 @@ pub enum Scheme {
     Cons(Box<Scheme>, Box<Scheme>),
     Symbol(String),
     Int(i64),
+    Closure(Closure),
+}
+
+pub trait ClosureTrait : Debug {
+    fn apply(&self, args: Vec<Scheme>) -> Scheme;
+
+    fn location(&self) -> usize {
+        self as *const Self as *const u8 as usize
+    }
+}
+
+#[derive(Debug)]
+pub struct Closure(Box<ClosureTrait>);
+
+impl ClosureTrait for Closure {
+    fn apply(&self, args: Vec<Scheme>) -> Scheme {
+        self.0.apply(args)
+    }
+
+    fn location(&self) -> usize {
+        self.0.location()
+    }
+}
+
+impl PartialEq for Closure {
+    fn eq(&self, other: &Closure) -> bool {
+        self.0.location() == other.0.location()
+    }
 }
 
 impl Scheme {
@@ -59,6 +88,9 @@ impl Scheme {
     }
 
     fn apply(self, args: Vec<Scheme>) -> Scheme {
+        if let Scheme::Closure(closure) = self {
+            return closure.apply(args);
+        }
         if self == Scheme::Symbol("sum".to_string()) {
             let mut total = 0;
             for arg in args {
