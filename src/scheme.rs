@@ -9,7 +9,7 @@ pub enum Scheme {
     Cons(Box<Scheme>, Box<Scheme>),
     Symbol(String),
     Int(i64),
-    Closure(Closure),
+    SumFunction,
 }
 
 pub struct Environment(HashMap<String, Scheme>);
@@ -77,7 +77,7 @@ impl Scheme {
         match self {
             Scheme::Symbol(s) => {
                 if &s == "sum" {
-                    Scheme::Closure(Closure(Box::new(Sum)))
+                    Scheme::SumFunction
                 } else {
                     Scheme::Symbol(s.clone())
                 }
@@ -98,10 +98,7 @@ impl Scheme {
     }
 
     fn apply(self, args: Vec<Scheme>) -> Scheme {
-        if let Scheme::Closure(closure) = self {
-            return closure.apply(args);
-        }
-        if self == Scheme::Symbol("sum".to_string()) {
+        if let Scheme::SumFunction = self {
             let mut total = 0;
             for arg in args {
                 match arg {
@@ -119,21 +116,5 @@ impl Scheme {
 impl Environment {
     fn lookup(&self, variable: &str) -> Option<&Scheme> {
         self.0.get(variable)
-    }
-}
-
-#[derive(Debug)]
-struct Sum;
-
-impl ClosureTrait for Sum {
-    fn apply(&self, args: Vec<Scheme>) -> Scheme {
-        let mut total = 0;
-        for arg in args {
-            match arg {
-                Scheme::Int(n) => total += n,
-                _ => {},
-            }
-        }
-        Scheme::Int(total)
     }
 }
