@@ -8,8 +8,10 @@ pub enum Scheme {
     Cons(Box<Scheme>, Box<Scheme>),
     Symbol(String),
     Int(i64),
-    SumFunction,
+    Builtin(Builtin),
 }
+
+type Builtin = fn(Vec<Scheme>) -> Scheme;
 
 pub struct Environment(HashMap<String, Scheme>);
 
@@ -49,7 +51,7 @@ impl Scheme {
         match self {
             Scheme::Symbol(s) => {
                 if &s == "sum" {
-                    Scheme::SumFunction
+                    Scheme::Builtin(sum_builtin)
                 } else {
                     Scheme::Symbol(s.clone())
                 }
@@ -70,19 +72,23 @@ impl Scheme {
     }
 
     fn apply(self, args: Vec<Scheme>) -> Scheme {
-        if let Scheme::SumFunction = self {
-            let mut total = 0;
-            for arg in args {
-                match arg {
-                    Scheme::Int(n) => total += n,
-                    _ => {},
-                }
-            }
-            Scheme::Int(total)
+        if let Scheme::Builtin(builtin) = self {
+            builtin(args)
         } else {
             Scheme::Cons(Box::new(self), Box::new(Scheme::list_from_iter(args)))
         }
     }
+}
+
+fn sum_builtin(args: Vec<Scheme>) -> Scheme {
+    let mut total = 0;
+    for arg in args {
+        match arg {
+            Scheme::Int(n) => total += n,
+            _ => {},
+        }
+    }
+    Scheme::Int(total)
 }
 
 impl Environment {
