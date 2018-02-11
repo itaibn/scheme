@@ -102,10 +102,10 @@ impl Scheme {
     }
 
     // Incorporate errors to type signature
-    pub fn eval(&self) -> Scheme {
+    pub fn eval(&self, env: &Environment) -> Scheme {
         if let Some(s) = self.as_symbol() {
-            if s == "sum" {
-                Scheme::builtin(sum_builtin)
+            if let Some(res) = env.lookup(&s) {
+                res.clone()
             } else {
                 Scheme::symbol(s.to_string())
             }
@@ -114,7 +114,7 @@ impl Scheme {
             // TODO: Special forms
             let mut exprs = args.unwrap()
                                 .into_iter()
-                                .map(|arg| arg.eval())
+                                .map(|arg| arg.eval(env))
                                 .collect::<Vec<_>>();
             let args = exprs.split_off(1);
             exprs.into_iter().nth(0).unwrap().apply(args)
@@ -149,10 +149,18 @@ impl Environment {
     }
 }
 
+lazy_static! {
+    pub static ref INITIAL_ENVIRONMENT: Environment = {
+        let mut hashmap = HashMap::new();
+        hashmap.insert("sum".to_string(), Scheme::builtin(sum_builtin));
+        Environment(hashmap)
+    };
+}
+
 // Only a valid test while "sum" is an alias for "+"
 #[test]
 fn test_sums() {
     use read::Reader;
     let expr = Reader::new("(sum 1 5 (sum 20) 1)").read_expr().unwrap();
-    assert_eq!(expr.eval(), Scheme::int(27));
+    assert_eq!(expr.eval(&*INITIAL_ENVIRONMENT), Scheme::int(27));
 }
