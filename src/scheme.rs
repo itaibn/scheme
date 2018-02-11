@@ -1,4 +1,5 @@
 
+use std::collections::HashMap;
 use std::fmt::Debug;
 use std::iter::DoubleEndedIterator;
 
@@ -10,6 +11,8 @@ pub enum Scheme {
     Int(i64),
     Closure(Closure),
 }
+
+pub struct Environment(HashMap<String, Scheme>);
 
 pub trait ClosureTrait : Debug {
     fn apply(&self, args: Vec<Scheme>) -> Scheme;
@@ -71,9 +74,16 @@ impl Scheme {
 
     // Incorporate errors to type signature
     pub fn eval(self) -> Scheme {
-        match &self {
-            &Scheme::Cons(_, _) => {
-                let args = self.into_vec();
+        match self {
+            Scheme::Symbol(s) => {
+                if &s == "sum" {
+                    Scheme::Closure(Closure(Box::new(Sum)))
+                } else {
+                    Scheme::Symbol(s.clone())
+                }
+            }
+            itself @ Scheme::Cons(_, _) => {
+                let args = itself.into_vec();
                 // TODO: Special forms
                 let mut exprs = args.unwrap()
                                     .into_iter()
@@ -103,5 +113,27 @@ impl Scheme {
         } else {
             Scheme::Cons(Box::new(self), Box::new(Scheme::list_from_iter(args)))
         }
+    }
+}
+
+impl Environment {
+    fn lookup(&self, variable: &str) -> Option<&Scheme> {
+        self.0.get(variable)
+    }
+}
+
+#[derive(Debug)]
+struct Sum;
+
+impl ClosureTrait for Sum {
+    fn apply(&self, args: Vec<Scheme>) -> Scheme {
+        let mut total = 0;
+        for arg in args {
+            match arg {
+                Scheme::Int(n) => total += n,
+                _ => {},
+            }
+        }
+        Scheme::Int(total)
     }
 }
