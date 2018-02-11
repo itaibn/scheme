@@ -46,9 +46,9 @@ impl<'a> Reader<'a> {
 
     pub fn read_expr(&mut self) -> Result<Scheme, &'static str> {
         match self.read_token()? {
-            Some(Token::Identifier(ident)) => Ok(Scheme::Symbol(ident)),
+            Some(Token::Identifier(ident)) => Ok(Scheme::symbol(ident)),
             Some(Token::LeftParen) => self.read_list(),
-            Some(Token::Number(n)) => Ok(Scheme::Int(n)),
+            Some(Token::Number(n)) => Ok(Scheme::int(n)),
             _ => Err("Invalid expression"),
         }
     }
@@ -62,9 +62,9 @@ impl<'a> Reader<'a> {
 
         assert_eq!(self.read_token(), Ok(Some(Token::RightParen)));
 
-        let mut list_expr = Scheme::Nil;
+        let mut list_expr = Scheme::null();
         for term in list.into_iter().rev() {
-            list_expr = Scheme::Cons(Box::new(term), Box::new(list_expr));
+            list_expr = Scheme::cons(term, list_expr);
         }
 
         Ok(list_expr)
