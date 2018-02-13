@@ -1,49 +1,55 @@
 
 use std::collections::HashMap;
 use std::iter::DoubleEndedIterator;
+use std::sync::Arc;
 
-#[derive(Clone, Debug, PartialEq)]
-pub enum SchemeData {
+#[derive(Debug, PartialEq)]
+enum SchemeData {
     Null,
-    Cons(Box<Scheme>, Box<Scheme>),
+    Cons(Scheme, Scheme),
     Symbol(String),
     Int(i64),
     Builtin(Builtin),
 }
 
-pub type Scheme = SchemeData;
+#[derive(Clone, Debug, PartialEq)]
+pub struct Scheme(Arc<SchemeData>);
 
 type Builtin = fn(Vec<Scheme>) -> Scheme;
 
 pub struct Environment(HashMap<String, Scheme>);
 
 impl Scheme {
+    fn from_data(data: SchemeData) -> Scheme {
+        Scheme(Arc::new(data))
+    }
+
     pub fn null() -> Scheme {
-        SchemeData::Null
+        Scheme::from_data(SchemeData::Null)
     }
 
     pub fn cons(fst: Scheme, snd: Scheme) -> Scheme {
-        SchemeData::Cons(Box::new(fst), Box::new(snd))
+        Scheme::from_data(SchemeData::Cons(fst, snd))
     }
 
     pub fn symbol(s: String) -> Scheme {
-        SchemeData::Symbol(s)
+        Scheme::from_data(SchemeData::Symbol(s))
     }
 
     pub fn int(n: i64) -> Scheme {
-        SchemeData::Int(n)
+        Scheme::from_data(SchemeData::Int(n))
     }
 
     fn builtin(func: Builtin) -> Scheme {
-        SchemeData::Builtin(func)
+        Scheme::from_data(SchemeData::Builtin(func))
     }
 
     pub fn is_null(&self) -> bool {
-        *self == SchemeData::Null
+        *self.0 == SchemeData::Null
     }
 
     pub fn as_pair(&self) -> Option<(&Scheme, &Scheme)> {
-        if let &SchemeData::Cons(ref x, ref y) = self {
+        if let SchemeData::Cons(ref x, ref y) = *self.0 {
             Some((x, y))
         } else {
             None
@@ -51,7 +57,7 @@ impl Scheme {
     }
 
     pub fn as_symbol(&self) -> Option<&str> {
-        if let &SchemeData::Symbol(ref s) = self {
+        if let SchemeData::Symbol(ref s) = *self.0 {
             Some(&*s)
         } else {
             None
@@ -59,7 +65,7 @@ impl Scheme {
     }
 
     pub fn as_int(&self) -> Option<i64> {
-        if let &SchemeData::Int(n) = self {
+        if let SchemeData::Int(n) = *self.0 {
             Some(n)
         } else {
             None
@@ -67,7 +73,7 @@ impl Scheme {
     }
 
     fn as_builtin(&self) -> Option<Builtin> {
-        if let &SchemeData::Builtin(func) = self {
+        if let SchemeData::Builtin(func) = *self.0 {
             Some(func)
         } else {
             None
@@ -128,7 +134,7 @@ impl Scheme {
         if let Some(builtin) = self.as_builtin() {
             builtin(args)
         } else {
-            Scheme::cons(self.clone(), SchemeData::list_from_iter(args))
+            Scheme::cons(self.clone(), Scheme::list_from_iter(args))
         }
     }
 }
