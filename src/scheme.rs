@@ -15,7 +15,10 @@ enum SchemeData {
 #[derive(Clone, Debug, PartialEq)]
 pub struct Scheme(Arc<SchemeData>);
 
-type Builtin = fn(Vec<Scheme>) -> Scheme;
+#[derive(Debug)]
+pub struct Error;
+
+type Builtin = fn(Vec<Scheme>) -> Result<Scheme, Error>;
 
 pub struct Environment(HashMap<String, Scheme>);
 
@@ -81,7 +84,7 @@ impl Scheme {
     }
 
     // Use iterators
-    fn into_vec(&self) -> Option<Vec<Scheme>> {
+    fn into_vec(&self) -> Result<Vec<Scheme>, Error> {
         let mut cur_elems = Vec::new();
         let mut head = self;
 
@@ -90,9 +93,9 @@ impl Scheme {
                 cur_elems.push(car.clone());
                 head = cdr;
             } else if head.is_null() {
-                return Some(cur_elems);
+                return Ok(cur_elems);
             } else {
-                return None;
+                return Err(Error);
             }
         }
     }
@@ -108,45 +111,47 @@ impl Scheme {
     }
 
     // Incorporate errors to type signature
-    pub fn eval(&self, env: &Environment) -> Scheme {
+    pub fn eval(&self, env: &Environment) -> Result<Scheme, Error> {
         if let Some(s) = self.as_symbol() {
             if let Some(res) = env.lookup(&s) {
-                res.clone()
+                Ok(res.clone())
             } else {
-                Scheme::symbol(s.to_string())
+                Err(Error)
             }
         } else if self.as_pair().is_some() {
-            let args = self.into_vec();
+            let args = self.into_vec()?;
             // TODO: Special forms
-            let mut exprs = args.unwrap()
-                                .into_iter()
+            let mut exprs = args.into_iter()
                                 .map(|arg| arg.eval(env))
-                                .collect::<Vec<_>>();
+                                .collect::<Result<Vec<_>, _>>()?;
             let args = exprs.split_off(1);
             exprs.into_iter().nth(0).unwrap().apply(args)
+        } else if self.as_int().is_some() {
+            Ok(self.clone())
         } else {
-            // Temp
-            self.clone()
+            Err(Error)
         }
     }
 
-    fn apply(&self, args: Vec<Scheme>) -> Scheme {
+    fn apply(&self, args: Vec<Scheme>) -> Result<Scheme, Error> {
         if let Some(builtin) = self.as_builtin() {
             builtin(args)
         } else {
-            Scheme::cons(self.clone(), Scheme::list_from_iter(args))
+            Err(Error)
         }
     }
 }
 
-fn sum_builtin(args: Vec<Scheme>) -> Scheme {
+fn sum_builtin(args: Vec<Scheme>) -> Result<Scheme, Error> {
     let mut total = 0;
     for arg in args {
         if let Some(n) = arg.as_int() {
             total += n;
+        } else {
+            return Err(Error);
         }
     }
-    Scheme::int(total)
+    Ok(Scheme::int(total))
 }
 
 impl Environment {
@@ -168,5 +173,5 @@ lazy_static! {
 fn test_sums() {
     use read::Reader;
     let expr = Reader::new("(sum 1 5 (sum 20) 1)").read_expr().unwrap();
-    assert_eq!(expr.eval(&*INITIAL_ENVIRONMENT), Scheme::int(27));
+    assert_eq!(expr.eval(&*INITIAL_ENVIRONMENT).unwrap(), Scheme::int(27));
 }
