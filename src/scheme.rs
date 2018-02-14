@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use std::iter::DoubleEndedIterator;
 use std::sync::Arc;
 
+// TODO: Rethink derive(PartialEq)
 #[derive(Debug, PartialEq)]
 enum SchemeData {
     Null,
@@ -10,6 +11,7 @@ enum SchemeData {
     Symbol(String),
     Int(i64),
     Builtin(Builtin),
+    Lambda(Lambda),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -19,6 +21,12 @@ pub struct Scheme(Arc<SchemeData>);
 pub struct Error;
 
 type Builtin = fn(Vec<Scheme>) -> Result<Scheme, Error>;
+
+#[derive(Clone, Debug, PartialEq)]
+struct Lambda {
+    binder: String,
+    body: Scheme,
+}
 
 pub struct Environment(HashMap<String, Scheme>);
 
@@ -45,6 +53,10 @@ impl Scheme {
 
     fn builtin(func: Builtin) -> Scheme {
         Scheme::from_data(SchemeData::Builtin(func))
+    }
+
+    fn lambda(lam: Lambda) -> Scheme {
+        Scheme::from_data(SchemeData::Lambda(lam))
     }
 
     pub fn is_null(&self) -> bool {
@@ -78,6 +90,14 @@ impl Scheme {
     fn as_builtin(&self) -> Option<Builtin> {
         if let SchemeData::Builtin(func) = *self.0 {
             Some(func)
+        } else {
+            None
+        }
+    }
+
+    fn as_lambda(&self) -> Option<Lambda> {
+        if let SchemeData::Lambda(ref lam) = *self.0 {
+            Some(lam.clone())
         } else {
             None
         }
@@ -118,14 +138,24 @@ impl Scheme {
             } else {
                 Err(Error)
             }
-        } else if self.as_pair().is_some() {
-            let args = self.into_vec()?;
+        } else if let Some((operator, operands_linked)) = self.as_pair() {
             // TODO: Special forms
-            let mut exprs = args.into_iter()
-                                .map(|arg| arg.eval(env))
-                                .collect::<Result<Vec<_>, _>>()?;
-            let args = exprs.split_off(1);
-            exprs.into_iter().nth(0).unwrap().apply(args)
+            if let Some("lambda") = operator.as_symbol() {
+                let (formals, body) = operands_linked.as_pair().ok_or(Error)?;
+                let binder = formals.as_symbol().ok_or(Error)?;
+                Ok(Scheme::lambda(Lambda {
+                    binder: binder.to_string(),
+                    body: body.clone(),
+                }))
+            } else {
+                // Procedure call
+                let operands = operands_linked.into_vec()?;
+                let procedure = operator.eval(env)?;
+                let arguments = operands.into_iter()
+                                        .map(|arg| arg.eval(env))
+                                        .collect::<Result<Vec<_>, _>>()?;
+                procedure.apply(arguments)
+            }
         } else if self.as_int().is_some() {
             Ok(self.clone())
         } else {
