@@ -28,6 +28,7 @@ struct Lambda {
     body: Scheme,
 }
 
+#[derive(Clone, Debug)]
 pub struct Environment(HashMap<String, Scheme>);
 
 impl Scheme {
@@ -143,9 +144,13 @@ impl Scheme {
             if let Some("lambda") = operator.as_symbol() {
                 let (formals, body) = operands_linked.as_pair().ok_or(Error)?;
                 let binder = formals.as_symbol().ok_or(Error)?;
+                let (expr, null) = body.as_pair().ok_or(Error)?;
+                if !null.is_null() {
+                    return Err(Error);
+                }
                 Ok(Scheme::lambda(Lambda {
                     binder: binder.to_string(),
-                    body: body.clone(),
+                    body: expr.clone(),
                 }))
             } else {
                 // Procedure call
@@ -154,7 +159,7 @@ impl Scheme {
                 let arguments = operands.into_iter()
                                         .map(|arg| arg.eval(env))
                                         .collect::<Result<Vec<_>, _>>()?;
-                procedure.apply(arguments)
+                procedure.apply(arguments, env)
             }
         } else if self.as_int().is_some() {
             Ok(self.clone())
@@ -163,9 +168,16 @@ impl Scheme {
         }
     }
 
-    fn apply(&self, args: Vec<Scheme>) -> Result<Scheme, Error> {
+    fn apply(&self, args: Vec<Scheme>, env: &Environment) -> Result<Scheme,
+        Error> {
+
         if let Some(builtin) = self.as_builtin() {
             builtin(args)
+        } else if let Some(lambda) = self.as_lambda() {
+            let mut new_env = env.clone();
+            let args_object = Scheme::list_from_iter(args);
+            new_env.insert(&lambda.binder, args_object);
+            lambda.body.eval(&new_env)
         } else {
             Err(Error)
         }
@@ -187,6 +199,10 @@ fn sum_builtin(args: Vec<Scheme>) -> Result<Scheme, Error> {
 impl Environment {
     fn lookup(&self, variable: &str) -> Option<&Scheme> {
         self.0.get(variable)
+    }
+
+    fn insert(&mut self, variable: &str, val: Scheme) {
+        self.0.insert(variable.to_string(), val);
     }
 }
 
