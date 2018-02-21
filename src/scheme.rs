@@ -1,5 +1,6 @@
 
 use std::collections::HashMap;
+use std::fmt;
 use std::iter::DoubleEndedIterator;
 use std::sync::Arc;
 
@@ -180,6 +181,26 @@ impl Scheme {
             lambda.body.eval(&new_env)
         } else {
             Err(Error)
+        }
+    }
+}
+
+impl fmt::Display for Scheme {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        if let Some((a, b)) = self.as_pair() {
+            write!(f, "({} . {})", a, b)
+        } else if self.is_null() {
+            write!(f, "()")
+        } else if let Some(s) = self.as_symbol() {
+            write!(f, "{}", s)
+        } else if let Some(n) = self.as_int() {
+            write!(f, "{}", n)
+        } else if let Some(bltin) = self.as_builtin() {
+            write!(f, "<builtin at 0x{:x}>", bltin as usize)
+        } else if let Some(_) = self.as_lambda() {
+            write!(f, "<closure>")
+        } else {
+            write!(f, "<unrecognized data type>")
         }
     }
 }
