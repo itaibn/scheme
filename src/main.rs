@@ -15,5 +15,5 @@ fn main() {
     let in_expr = read::Reader::new(&input_buffer).read_expr().expect("Invalid \
         expression");
     let out_expr = in_expr.eval(&*INITIAL_ENVIRONMENT);
-    println!("{:?}", out_expr);
+    println!("{}", out_expr.expect("Scheme expression returns error"));
 }
