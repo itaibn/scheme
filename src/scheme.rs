@@ -188,7 +188,24 @@ impl Scheme {
 impl fmt::Display for Scheme {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         if let Some((a, b)) = self.as_pair() {
-            write!(f, "({} . {})", a, b)
+            let mut head = b;
+            let mut items = vec![a];
+            while let Some((a, b)) = head.as_pair() {
+                items.push(a);
+                head = b;
+            }
+            write!(f, "(")?;
+            for (n, x) in items.into_iter().enumerate() {
+                if n > 0 {
+                    write!(f, " ")?;
+                }
+                write!(f, "{}", x)?;
+            }
+            if head.is_null() {
+                write!(f, ")")
+            } else {
+                write!(f, " . {})", head)
+            }
         } else if self.is_null() {
             write!(f, "()")
         } else if let Some(s) = self.as_symbol() {
@@ -217,6 +234,14 @@ fn sum_builtin(args: Vec<Scheme>) -> Result<Scheme, Error> {
     Ok(Scheme::int(total))
 }
 
+fn cons_builtin(args: Vec<Scheme>) -> Result<Scheme, Error> {
+    if args.len() == 2 {
+        Ok(Scheme::cons(args[0].clone(), args[1].clone()))
+    } else {
+        Err(Error)
+    }
+}
+
 impl Environment {
     fn lookup(&self, variable: &str) -> Option<&Scheme> {
         self.0.get(variable)
@@ -231,6 +256,7 @@ lazy_static! {
     pub static ref INITIAL_ENVIRONMENT: Environment = {
         let mut hashmap = HashMap::new();
         hashmap.insert("sum".to_string(), Scheme::builtin(sum_builtin));
+        hashmap.insert("cons".to_string(), Scheme::builtin(cons_builtin));
         Environment(hashmap)
     };
 }
