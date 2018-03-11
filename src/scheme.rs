@@ -23,10 +23,16 @@ pub struct Error;
 
 type Builtin = fn(Vec<Scheme>) -> Result<Scheme, Error>;
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 struct Lambda {
-    binder: String,
+    binder: Formals,
     body: Scheme,
+}
+
+#[derive(Debug, PartialEq, Clone)]
+struct Formals {
+    head_vars: Vec<String>,
+    tail_var: Option<String>,
 }
 
 #[derive(Clone, Debug)]
@@ -144,13 +150,13 @@ impl Scheme {
             // TODO: Special forms
             if let Some("lambda") = operator.as_symbol() {
                 let (formals, body) = operands_linked.as_pair().ok_or(Error)?;
-                let binder = formals.as_symbol().ok_or(Error)?;
+                //let binder = formals.as_symbol().ok_or(Error)?;
                 let (expr, null) = body.as_pair().ok_or(Error)?;
                 if !null.is_null() {
                     return Err(Error);
                 }
                 Ok(Scheme::lambda(Lambda {
-                    binder: binder.to_string(),
+                    binder: Formals::from_object(formals.clone())?,
                     body: expr.clone(),
                 }))
             } else {
@@ -176,8 +182,7 @@ impl Scheme {
             builtin(args)
         } else if let Some(lambda) = self.as_lambda() {
             let mut new_env = env.clone();
-            let args_object = Scheme::list_from_iter(args);
-            new_env.insert(&lambda.binder, args_object);
+            lambda.binder.match_with_args(args, &mut new_env)?;
             lambda.body.eval(&new_env)
         } else {
             Err(Error)
@@ -218,6 +223,73 @@ impl fmt::Display for Scheme {
             write!(f, "<closure>")
         } else {
             write!(f, "<unrecognized data type>")
+        }
+    }
+}
+
+impl Formals {
+    fn from_object(mut head: Scheme) -> Result<Formals, Error> {
+        let mut head_vars = Vec::new();
+        let tail_var: Option<String>;
+
+        while let Some((a, b)) = head.clone().as_pair() {
+            if let Some(ref s) = a.as_symbol() {
+                if head_vars.iter().find(|v| s == &*v).is_some() {
+                    return Err(Error);
+                } else {
+                    head_vars.push(s.to_string());
+                }
+            } else {
+                return Err(Error);
+            }
+            head = b.clone();
+        }
+
+        if head.is_null() {
+            tail_var = None;
+        } else if let Some(ref s) = head.as_symbol() {
+            if head_vars.iter().find(|v| s == &*v).is_some() {
+                return Err(Error);
+            } else {
+                tail_var = Some(s.to_string());
+            }
+        } else {
+            return Err(Error);
+        }
+
+        Ok(Formals {
+            head_vars: head_vars,
+            tail_var: tail_var,
+        })
+    }
+
+    // Current implementation may modify env even if it returns an error
+    fn match_with_args(&self, args: Vec<Scheme>, env: &mut Environment) ->
+        Result<(), Error> {
+
+        let n = self.head_vars.len();
+
+        if args.len() < n {
+            return Err(Error);
+        } else {
+            for i in 0..self.head_vars.len() {
+                env.insert(&self.head_vars[i], args[i].clone());
+            }
+        }
+
+        match self.tail_var {
+            Some(ref varname) => {
+                env.insert(varname, Scheme::list_from_iter(
+                    args[n..].to_vec()));
+                Ok(())
+            },
+            None => {
+                if args.len() == n {
+                    Ok(())
+                } else {
+                    Err(Error)
+                }
+            }
         }
     }
 }
