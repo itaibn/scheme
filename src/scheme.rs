@@ -5,7 +5,7 @@ use std::iter::DoubleEndedIterator;
 use std::sync::Arc;
 
 // TODO: Rethink derive(PartialEq)
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 enum SchemeData {
     Null,
     Cons(Scheme, Scheme),
@@ -21,9 +21,9 @@ pub struct Scheme(Arc<SchemeData>);
 #[derive(Debug)]
 pub struct Error;
 
-type Builtin = fn(Vec<Scheme>) -> Result<Scheme, Error>;
+type Builtin = fn(Vec<Scheme>, Environment) -> Result<Scheme, Error>;
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 struct Lambda {
     binder: Formals,
     body: Scheme,
@@ -179,7 +179,7 @@ impl Scheme {
         Error> {
 
         if let Some(builtin) = self.as_builtin() {
-            builtin(args)
+            builtin(args, env.clone())
         } else if let Some(lambda) = self.as_lambda() {
             let mut new_env = env.clone();
             lambda.binder.match_with_args(args, &mut new_env)?;
@@ -226,6 +226,14 @@ impl fmt::Display for Scheme {
         }
     }
 }
+
+/*
+impl fmt::Debug for SchemeData {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", Scheme::from_data(self.clone()))
+    }
+}
+*/
 
 impl Formals {
     fn from_object(mut head: Scheme) -> Result<Formals, Error> {
@@ -294,7 +302,7 @@ impl Formals {
     }
 }
 
-fn sum_builtin(args: Vec<Scheme>) -> Result<Scheme, Error> {
+fn sum_builtin(args: Vec<Scheme>, _: Environment) -> Result<Scheme, Error> {
     let mut total = 0;
     for arg in args {
         if let Some(n) = arg.as_int() {
@@ -306,7 +314,7 @@ fn sum_builtin(args: Vec<Scheme>) -> Result<Scheme, Error> {
     Ok(Scheme::int(total))
 }
 
-fn cons_builtin(args: Vec<Scheme>) -> Result<Scheme, Error> {
+fn cons_builtin(args: Vec<Scheme>, _: Environment) -> Result<Scheme, Error> {
     if args.len() == 2 {
         Ok(Scheme::cons(args[0].clone(), args[1].clone()))
     } else {
