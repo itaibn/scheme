@@ -185,8 +185,8 @@ impl Scheme {
         if let Some(builtin) = self.as_builtin() {
             builtin(args, env.clone())
         } else if let Some(lambda) = self.as_lambda() {
-            let mut new_env = env.clone();
-            lambda.binder.match_with_args(args, &mut new_env)?;
+            let new_env = env.deep_clone();
+            lambda.binder.match_with_args(args, &new_env)?;
             lambda.body.eval(&new_env)
         } else {
             Err(Error)
@@ -276,7 +276,7 @@ impl Formals {
     }
 
     // Current implementation may modify env even if it returns an error
-    fn match_with_args(&self, args: Vec<Scheme>, env: &mut Environment) ->
+    fn match_with_args(&self, args: Vec<Scheme>, env: &Environment) ->
         Result<(), Error> {
 
         let n = self.head_vars.len();
@@ -327,6 +327,10 @@ fn cons_builtin(args: Vec<Scheme>, _: Environment) -> Result<Scheme, Error> {
 }
 
 impl Environment {
+    fn from_data(data: EnvironmentData) -> Environment {
+        Environment(Rc::new(RefCell::new(data)))
+    }
+
     fn lookup(&self, variable: &str) -> Option<Scheme> {
         self.0.borrow().0.get(variable).cloned()
     }
@@ -334,13 +338,17 @@ impl Environment {
     fn insert(&self, variable: &str, val: Scheme) {
         self.0.borrow_mut().0.insert(variable.to_string(), val);
     }
+
+    fn deep_clone(&self) -> Environment {
+        Environment::from_data((&*self.0.borrow()).clone())
+    }
 }
 
 pub fn initial_environment() -> Environment {
     let mut hashmap = HashMap::new();
     hashmap.insert("sum".to_string(), Scheme::builtin(sum_builtin));
     hashmap.insert("cons".to_string(), Scheme::builtin(cons_builtin));
-    Environment(Rc::new(RefCell::new(EnvironmentData(hashmap))))
+    Environment::from_data(EnvironmentData(hashmap))
 }
 
 // Only a valid test while "sum" is an alias for "+"
