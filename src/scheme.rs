@@ -1,8 +1,9 @@
 
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fmt;
 use std::iter::DoubleEndedIterator;
-use std::sync::Arc;
+use std::rc::Rc;
 
 // TODO: Rethink derive(PartialEq)
 #[derive(Clone, Debug, PartialEq)]
@@ -16,7 +17,7 @@ enum SchemeData {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct Scheme(Arc<SchemeData>);
+pub struct Scheme(Rc<SchemeData>);
 
 #[derive(Debug)]
 pub struct Error;
@@ -36,11 +37,14 @@ struct Formals {
 }
 
 #[derive(Clone, Debug)]
-pub struct Environment(HashMap<String, Scheme>);
+pub struct Environment(Rc<RefCell<EnvironmentData>>);
+
+#[derive(Clone, Debug)]
+pub struct EnvironmentData(HashMap<String, Scheme>);
 
 impl Scheme {
     fn from_data(data: SchemeData) -> Scheme {
-        Scheme(Arc::new(data))
+        Scheme(Rc::new(data))
     }
 
     pub fn null() -> Scheme {
@@ -323,22 +327,20 @@ fn cons_builtin(args: Vec<Scheme>, _: Environment) -> Result<Scheme, Error> {
 }
 
 impl Environment {
-    fn lookup(&self, variable: &str) -> Option<&Scheme> {
-        self.0.get(variable)
+    fn lookup(&self, variable: &str) -> Option<Scheme> {
+        self.0.borrow().0.get(variable).cloned()
     }
 
-    fn insert(&mut self, variable: &str, val: Scheme) {
-        self.0.insert(variable.to_string(), val);
+    fn insert(&self, variable: &str, val: Scheme) {
+        self.0.borrow_mut().0.insert(variable.to_string(), val);
     }
 }
 
-lazy_static! {
-    pub static ref INITIAL_ENVIRONMENT: Environment = {
-        let mut hashmap = HashMap::new();
-        hashmap.insert("sum".to_string(), Scheme::builtin(sum_builtin));
-        hashmap.insert("cons".to_string(), Scheme::builtin(cons_builtin));
-        Environment(hashmap)
-    };
+pub fn initial_environment() -> Environment {
+    let mut hashmap = HashMap::new();
+    hashmap.insert("sum".to_string(), Scheme::builtin(sum_builtin));
+    hashmap.insert("cons".to_string(), Scheme::builtin(cons_builtin));
+    Environment(Rc::new(RefCell::new(EnvironmentData(hashmap))))
 }
 
 // Only a valid test while "sum" is an alias for "+"
@@ -346,5 +348,5 @@ lazy_static! {
 fn test_sums() {
     use read::Reader;
     let expr = Reader::new("(sum 1 5 (sum 20) 1)").read_expr().unwrap();
-    assert_eq!(expr.eval(&*INITIAL_ENVIRONMENT).unwrap(), Scheme::int(27));
+    assert_eq!(expr.eval(&initial_environment()).unwrap(), Scheme::int(27));
 }
