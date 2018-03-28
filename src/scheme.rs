@@ -28,6 +28,7 @@ type Builtin = fn(Vec<Scheme>, Environment) -> Result<Scheme, Error>;
 struct Lambda {
     binder: Formals,
     body: Scheme,
+    environment: Environment,
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -36,10 +37,10 @@ struct Formals {
     tail_var: Option<String>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Environment(Rc<RefCell<EnvironmentData>>);
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct EnvironmentData {
     parent: Option<Environment>,
     local: HashMap<String, Scheme>,
@@ -165,6 +166,7 @@ impl Scheme {
                 Ok(Scheme::lambda(Lambda {
                     binder: Formals::from_object(formals.clone())?,
                     body: expr.clone(),
+                    environment: env.clone(),
                 }))
             } else {
                 // Procedure call
@@ -188,7 +190,7 @@ impl Scheme {
         if let Some(builtin) = self.as_builtin() {
             builtin(args, env.clone())
         } else if let Some(lambda) = self.as_lambda() {
-            let new_env = env.make_child();
+            let new_env = lambda.environment.make_child();
             lambda.binder.match_with_args(args, &new_env)?;
             lambda.body.eval(&new_env)
         } else {
