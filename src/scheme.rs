@@ -348,7 +348,7 @@ impl Environment {
     fn make_child(&self) -> Environment {
         Environment::from_data(EnvironmentData {
             parent: Some(self.clone()),
-            local: Hashmap::new(),
+            local: HashMap::new(),
         })
     }
 }
@@ -361,10 +361,31 @@ pub fn initial_environment() -> Environment {
     Environment::from_data(data)
 }
 
-// Only a valid test while "sum" is an alias for "+"
-#[test]
-fn test_sums() {
+#[cfg(test)]
+mod test {
     use read::Reader;
-    let expr = Reader::new("(sum 1 5 (sum 20) 1)").read_expr().unwrap();
-    assert_eq!(expr.eval(&initial_environment()).unwrap(), Scheme::int(27));
+    use super::{initial_environment, Scheme};
+
+    fn comparison(input: &str, output: Scheme) {
+        let expr = Reader::new(input).read_expr().unwrap();
+        assert_eq!(expr.eval(&initial_environment()).unwrap(), output);
+    }
+
+    // Only a valid test while "sum" is an alias for "+"
+    #[test]
+    fn test_sums() {
+        comparison("(sum 1 5 (sum 20) 1)", Scheme::int(27));
+    }
+
+    #[test]
+    fn test_lambda_0() {
+        comparison("((lambda (x) x) 3)", Scheme::int(3));
+        //comparison("(((lambda (y) ((lambda (x) (lambda (y) x)) y)) 1) 2)",
+        //    Scheme::int(1));
+    }
+
+    #[test]
+    fn test_lambda_1() {
+        comparison("(((lambda (x) (lambda (y) x)) 1) 2)", Scheme::int(1));
+    }
 }
