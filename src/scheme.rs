@@ -40,7 +40,10 @@ struct Formals {
 pub struct Environment(Rc<RefCell<EnvironmentData>>);
 
 #[derive(Clone, Debug)]
-pub struct EnvironmentData(HashMap<String, Scheme>);
+pub struct EnvironmentData {
+    parent: Option<Environment>,
+    local: HashMap<String, Scheme>,
+}
 
 impl Scheme {
     fn from_data(data: SchemeData) -> Scheme {
@@ -185,7 +188,7 @@ impl Scheme {
         if let Some(builtin) = self.as_builtin() {
             builtin(args, env.clone())
         } else if let Some(lambda) = self.as_lambda() {
-            let new_env = env.deep_clone();
+            let new_env = env.make_child();
             lambda.binder.match_with_args(args, &new_env)?;
             lambda.body.eval(&new_env)
         } else {
@@ -332,15 +335,21 @@ impl Environment {
     }
 
     fn lookup(&self, variable: &str) -> Option<Scheme> {
-        self.0.borrow().0.get(variable).cloned()
+        let EnvironmentData {ref parent, ref local} = *self.0.borrow();
+        local.get(variable).cloned()
+             .or_else(||
+                parent.as_ref().and_then(|env| env.lookup(variable)))
     }
 
     fn insert(&self, variable: &str, val: Scheme) {
-        self.0.borrow_mut().0.insert(variable.to_string(), val);
+        self.0.borrow_mut().local.insert(variable.to_string(), val);
     }
 
-    fn deep_clone(&self) -> Environment {
-        Environment::from_data((&*self.0.borrow()).clone())
+    fn make_child(&self) -> Environment {
+        Environment::from_data(EnvironmentData {
+            parent: Some(self.clone()),
+            local: Hashmap::new(),
+        })
     }
 }
 
@@ -348,7 +357,8 @@ pub fn initial_environment() -> Environment {
     let mut hashmap = HashMap::new();
     hashmap.insert("sum".to_string(), Scheme::builtin(sum_builtin));
     hashmap.insert("cons".to_string(), Scheme::builtin(cons_builtin));
-    Environment::from_data(EnvironmentData(hashmap))
+    let data = EnvironmentData {parent: None, local: hashmap};
+    Environment::from_data(data)
 }
 
 // Only a valid test while "sum" is an alias for "+"
