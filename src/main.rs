@@ -3,10 +3,9 @@
 extern crate lazy_static;
 extern crate regex;
 
+mod builtin;
 mod read;
 mod scheme;
-
-use scheme::initial_environment;
 
 fn main() {
     let mut input_buffer = String::new();
@@ -14,6 +13,6 @@ fn main() {
         input");
     let in_expr = read::Reader::new(&input_buffer).read_expr().expect("Invalid \
         expression");
-    let out_expr = in_expr.eval(&initial_environment());
+    let out_expr = in_expr.eval(&builtin::initial_environment());
     println!("{}", out_expr.expect("Scheme expression returns error"));
 }

@@ -67,7 +67,7 @@ impl Scheme {
         Scheme::from_data(SchemeData::Int(n))
     }
 
-    fn builtin(func: Builtin) -> Scheme {
+    pub(crate) fn builtin(func: Builtin) -> Scheme {
         Scheme::from_data(SchemeData::Builtin(func))
     }
 
@@ -311,29 +311,17 @@ impl Formals {
     }
 }
 
-fn sum_builtin(args: Vec<Scheme>, _: Environment) -> Result<Scheme, Error> {
-    let mut total = 0;
-    for arg in args {
-        if let Some(n) = arg.as_int() {
-            total += n;
-        } else {
-            return Err(Error);
-        }
-    }
-    Ok(Scheme::int(total))
-}
-
-fn cons_builtin(args: Vec<Scheme>, _: Environment) -> Result<Scheme, Error> {
-    if args.len() == 2 {
-        Ok(Scheme::cons(args[0].clone(), args[1].clone()))
-    } else {
-        Err(Error)
-    }
-}
-
 impl Environment {
     fn from_data(data: EnvironmentData) -> Environment {
         Environment(Rc::new(RefCell::new(data)))
+    }
+
+    // Rethink structure
+    pub fn from_hashmap(hmap: HashMap<String, Scheme>) -> Environment {
+        Environment::from_data(EnvironmentData {
+            parent: None,
+            local: hmap,
+        })
     }
 
     fn lookup(&self, variable: &str) -> Option<Scheme> {
@@ -355,18 +343,11 @@ impl Environment {
     }
 }
 
-pub fn initial_environment() -> Environment {
-    let mut hashmap = HashMap::new();
-    hashmap.insert("sum".to_string(), Scheme::builtin(sum_builtin));
-    hashmap.insert("cons".to_string(), Scheme::builtin(cons_builtin));
-    let data = EnvironmentData {parent: None, local: hashmap};
-    Environment::from_data(data)
-}
-
 #[cfg(test)]
 mod test {
+    use builtin::initial_environment;
     use read::Reader;
-    use super::{initial_environment, Scheme};
+    use super::Scheme;
 
     fn comparison(input: &str, output: Scheme) {
         let expr = Reader::new(input).read_expr().unwrap();
@@ -382,12 +363,16 @@ mod test {
     #[test]
     fn test_lambda_0() {
         comparison("((lambda (x) x) 3)", Scheme::int(3));
-        //comparison("(((lambda (y) ((lambda (x) (lambda (y) x)) y)) 1) 2)",
-        //    Scheme::int(1));
     }
 
     #[test]
     fn test_lambda_1() {
         comparison("(((lambda (x) (lambda (y) x)) 1) 2)", Scheme::int(1));
+    }
+
+    #[test]
+    fn test_lambda_2() {
+        comparison("(((lambda (y) ((lambda (x) (lambda (y) x)) y)) 1) 2)",
+            Scheme::int(1));
     }
 }
