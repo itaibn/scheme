@@ -29,11 +29,15 @@ macro_rules! grammar {
 // No unicode support
 grammar! {
     capture_token -> "^<<intertoken_space>><<token>>";
+    check_delimiter -> "^<<delimiter>>";
 
     // Incomplete
     delimiter -> r"(:?[|() \t\n\r]|$)";
     // Incomplete
-    token -> r"(?P<token><<identifier>>|<<number>>|\(|\))";
+    token ->
+        r"(?P<token><<delimited_token>>|<<undelimited_token>>)";
+    delimited_token -> r"(?P<needs_delimiter><<identifier>>|<<number>>)";
+    undelimited_token -> r"(:?\(|\))";
     // Incomplete
     intraspace_whitespace -> r"[ \t]";
     // Incomplete
@@ -86,7 +90,7 @@ lazy_static! {
                     done = false;
                 }
             }
-            assert!(progress);
+            assert!(progress, "No progress. Matched keys: {:?}", res.keys());
         }
         res
     };
@@ -104,8 +108,13 @@ fn read_token(input: &str) -> Option<(Token, &str)> {
 
     let end = captures.get(0).unwrap().end();
     let rest = &input[end..];
-    let token = captures_to_token(captures);
 
+    if captures.name("needs_delimiter").is_some()
+        && !regex_class("check_delimiter").is_match(rest) {
+        return None;
+    }
+
+    let token = captures_to_token(captures);
     Some((token, rest))
 }
 
