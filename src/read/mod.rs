@@ -48,6 +48,7 @@ impl<'a> Reader<'a> {
         match self.read_token()? {
             Some(Token::Identifier(ident)) => Ok(Scheme::symbol(ident)),
             Some(Token::LeftParen) => self.read_list(),
+            Some(Token::Boolean(b)) => Ok(Scheme::boolean(b)),
             Some(Token::Number(n)) => Ok(Scheme::int(n)),
             _ => Err("Invalid expression"),
         }

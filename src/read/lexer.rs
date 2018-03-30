@@ -8,6 +8,7 @@ pub enum Token {
     LeftParen,
     RightParen,
     Identifier(String),
+    Boolean(bool),
     Number(i64),
 }
 
@@ -33,10 +34,12 @@ grammar! {
 
     // Incomplete
     delimiter -> r"(:?[|() \t\n\r]|$)";
-    // Incomplete
     token ->
         r"(?P<token><<delimited_token>>|<<undelimited_token>>)";
-    delimited_token -> r"(?P<needs_delimiter><<identifier>>|<<number>>)";
+    // Incomplete
+    delimited_token ->
+        r"(?P<needs_delimiter><<identifier>>|<<boolean>>|<<number>>)";
+    // Incomplete
     undelimited_token -> r"(:?\(|\))";
     // Incomplete
     intraspace_whitespace -> r"[ \t]";
@@ -54,6 +57,7 @@ grammar! {
     digit -> r"[0-9]";
     explicit_sign -> r"[+-]";
     special_subsequent -> r"(:?<<explicit_sign>>|[.@])";
+    boolean -> "(?P<truey>#t|#true)|(?P<falsey>#f|#false)";
     // Incomplete
     number -> r"(?P<uint>[0-9]+)";
 }
@@ -131,6 +135,12 @@ fn captures_to_token(captures: Captures) -> Token {
     if let Some(m) = captures.name("uint") {
         let n = i64::from_str_radix(m.as_str(), 10).unwrap();
         return Token::Number(n);
+    }
+    if captures.name("truey").is_some() {
+        return Token::Boolean(true);
+    }
+    if captures.name("falsey").is_some() {
+        return Token::Boolean(false);
     }
     panic!("{:?} recognized as token, but doesn't match any specific class of\
         token", captures.get(0).unwrap().as_str())

@@ -11,6 +11,7 @@ enum SchemeData {
     Null,
     Cons(Scheme, Scheme),
     Symbol(String),
+    Boolean(bool),
     Int(i64),
     Builtin(Builtin),
     Lambda(Lambda),
@@ -63,6 +64,10 @@ impl Scheme {
         Scheme::from_data(SchemeData::Symbol(s))
     }
 
+    pub fn boolean(b: bool) -> Scheme {
+        Scheme::from_data(SchemeData::Boolean(b))
+    }
+
     pub fn int(n: i64) -> Scheme {
         Scheme::from_data(SchemeData::Int(n))
     }
@@ -95,6 +100,14 @@ impl Scheme {
         }
     }
 
+    pub fn as_boolean(&self) -> Option<bool> {
+        if let SchemeData::Boolean(b) = *self.0 {
+            Some(b)
+        } else {
+            None
+        }
+    }
+
     pub fn as_int(&self) -> Option<i64> {
         if let SchemeData::Int(n) = *self.0 {
             Some(n)
@@ -117,6 +130,10 @@ impl Scheme {
         } else {
             None
         }
+    }
+
+    pub fn truey(&self) -> bool {
+        self.as_boolean() != Some(false)
     }
 
     // Use iterators
@@ -224,6 +241,9 @@ impl fmt::Display for Scheme {
             write!(f, "()")
         } else if let Some(s) = self.as_symbol() {
             write!(f, "{}", s)
+        } else if let Some(b) = self.as_boolean() {
+            let c = if b {'t'} else {'f'};
+            write!(f, "#{}", c)
         } else if let Some(n) = self.as_int() {
             write!(f, "{}", n)
         } else if let Some(bltin) = self.as_builtin() {
