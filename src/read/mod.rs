@@ -56,14 +56,19 @@ impl<'a> Reader<'a> {
 
     fn read_list(&mut self) -> Result<Scheme, &'static str> {
         let mut list = Vec::new();
+        let mut list_expr = Scheme::null();
 
         while self.peek_token()? != Some(&Token::RightParen) {
+            if self.peek_token()? == Some(&Token::Dot) {
+                self.read_token()?;
+                list_expr = self.read_expr()?;
+                break;
+            }
             list.push(self.read_expr()?);
         }
 
         assert_eq!(self.read_token(), Ok(Some(Token::RightParen)));
 
-        let mut list_expr = Scheme::null();
         for term in list.into_iter().rev() {
             list_expr = Scheme::cons(term, list_expr);
         }

@@ -7,6 +7,7 @@ use regex::{Captures, Regex};
 pub enum Token {
     LeftParen,
     RightParen,
+    Dot,
     Identifier(String),
     Boolean(bool),
     Number(i64),
@@ -38,7 +39,7 @@ grammar! {
         r"(?P<token><<delimited_token>>|<<undelimited_token>>)";
     // Incomplete
     delimited_token ->
-        r"(?P<needs_delimiter><<identifier>>|<<boolean>>|<<number>>)";
+        r"(?P<needs_delimiter><<identifier>>|<<boolean>>|<<number>>|\.)";
     // Incomplete
     undelimited_token -> r"(:?\(|\))";
     // Incomplete
@@ -127,6 +128,7 @@ fn captures_to_token(captures: Captures) -> Token {
     match m.as_str() {
         "(" => return Token::LeftParen,
         ")" => return Token::RightParen,
+        "." => return Token::Dot,
         _ => {},
     };
     if let Some(m) = captures.name("identifier") {
