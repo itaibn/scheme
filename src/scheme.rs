@@ -370,7 +370,7 @@ mod test {
     use super::Scheme;
 
     fn comparison(input: &str, output: Scheme) {
-        let expr = Reader::new(input).read_expr().unwrap();
+        let expr = read(input).unwrap();
         assert_eq!(expr.eval(&initial_environment()).unwrap(), output);
     }
 

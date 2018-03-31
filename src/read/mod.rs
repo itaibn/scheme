@@ -5,6 +5,10 @@ use self::lexer::{Lexer, Token};
 
 use std::mem;
 
+pub fn read(input: &str) -> Result<Scheme, &'static str> {
+    Reader::new(input).read_expr()
+}
+
 pub struct Reader<'a> {
     // Fuse?
     lexer: Lexer<'a>,
