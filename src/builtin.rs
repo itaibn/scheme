@@ -1,7 +1,7 @@
 
 use std::collections::HashMap;
 
-use scheme::{Scheme, Environment, Error};
+use scheme::{Binding, Scheme, Environment, Error};
 
 fn is_integer(args: Vec<Scheme>, _: Environment) -> Result<Scheme, Error> {
     if args.len() == 1 {
@@ -128,18 +128,25 @@ fn not(args: Vec<Scheme>, _: Environment) -> Result<Scheme, Error> {
 
 pub fn initial_environment() -> Environment {
     let mut hashmap = HashMap::new();
-    hashmap.insert("integer?".to_string(), Scheme::builtin(is_integer));
-    // Rename
-    hashmap.insert("sum".to_string(), Scheme::builtin(sum));
-    // Rename
-    hashmap.insert("minus".to_string(), Scheme::builtin(minus));
-    hashmap.insert("*".to_string(), Scheme::builtin(times));
-    hashmap.insert("pair?".to_string(), Scheme::builtin(is_pair));
-    hashmap.insert("null?".to_string(), Scheme::builtin(is_null));
-    hashmap.insert("cons".to_string(), Scheme::builtin(cons));
-    hashmap.insert("car".to_string(), Scheme::builtin(car));
-    hashmap.insert("cdr".to_string(), Scheme::builtin(cdr));
-    hashmap.insert("boolean?".to_string(), Scheme::builtin(is_boolean));
-    hashmap.insert("not".to_string(), Scheme::builtin(not));
+
+    {
+        let mut add_fn = |name: &'static str, func| hashmap.insert(
+            name.to_string(), Binding::Variable(Scheme::builtin(func)));
+            
+        add_fn("integer?", is_integer);
+        // Rename
+        add_fn("sum", sum);
+        // Rename
+        add_fn("minus", minus);
+        add_fn("*", times);
+        add_fn("pair?", is_pair);
+        add_fn("null?", is_null);
+        add_fn("cons", cons);
+        add_fn("car", car);
+        add_fn("cdr", cdr);
+        add_fn("boolean?", is_boolean);
+        add_fn("not", not);
+    }
+
     Environment::from_hashmap(hashmap)
 }

@@ -32,7 +32,7 @@ struct Lambda {
     environment: Environment,
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 struct Formals {
     head_vars: Vec<String>,
     tail_var: Option<String>,
@@ -44,7 +44,12 @@ pub struct Environment(Rc<RefCell<EnvironmentData>>);
 #[derive(Clone, Debug, PartialEq)]
 pub struct EnvironmentData {
     parent: Option<Environment>,
-    local: HashMap<String, Scheme>,
+    local: HashMap<String, Binding>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum Binding {
+    Variable(Scheme),
 }
 
 impl Scheme {
@@ -337,7 +342,7 @@ impl Environment {
     }
 
     // Rethink structure
-    pub fn from_hashmap(hmap: HashMap<String, Scheme>) -> Environment {
+    pub fn from_hashmap(hmap: HashMap<String, Binding>) -> Environment {
         Environment::from_data(EnvironmentData {
             parent: None,
             local: hmap,
@@ -345,14 +350,22 @@ impl Environment {
     }
 
     fn lookup(&self, variable: &str) -> Option<Scheme> {
+        match self.lookup_binding(variable) {
+            Some(Binding::Variable(val)) => Some(val),
+            _ => None,
+        }
+    }
+
+    fn lookup_binding(&self, variable: &str) -> Option<Binding> {
         let EnvironmentData {ref parent, ref local} = *self.0.borrow();
         local.get(variable).cloned()
              .or_else(||
-                parent.as_ref().and_then(|env| env.lookup(variable)))
+                parent.as_ref().and_then(|env| env.lookup_binding(variable)))
     }
 
     fn insert(&self, variable: &str, val: Scheme) {
-        self.0.borrow_mut().local.insert(variable.to_string(), val);
+        self.0.borrow_mut().local.insert(variable.to_string(),
+            Binding::Variable(val));
     }
 
     fn make_child(&self) -> Environment {
@@ -366,7 +379,7 @@ impl Environment {
 #[cfg(test)]
 mod test {
     use builtin::initial_environment;
-    use read::Reader;
+    use read::read;
     use super::Scheme;
 
     fn comparison(input: &str, output: Scheme) {
@@ -394,5 +407,12 @@ mod test {
     fn test_lambda_2() {
         comparison("(((lambda (y) ((lambda (x) (lambda (y) x)) y)) 1) 2)",
             Scheme::int(1));
+    }
+
+    #[test]
+    fn test_lambda_3() {
+        comparison("((lambda (x . y) (cons y x)) 2 3 4)", Scheme::cons(
+            Scheme::cons(Scheme::int(3), Scheme::cons(Scheme::int(4),
+            Scheme::null())), Scheme::int(2)));
     }
 }
