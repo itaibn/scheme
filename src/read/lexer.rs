@@ -8,6 +8,7 @@ pub enum Token {
     LeftParen,
     RightParen,
     Dot,
+    PrefixOp(&'static str),
     Identifier(String),
     Boolean(bool),
     Number(i64),
@@ -41,14 +42,14 @@ grammar! {
     delimited_token ->
         r"(?P<needs_delimiter><<identifier>>|<<boolean>>|<<number>>|\.)";
     // Incomplete
-    undelimited_token -> r"(:?\(|\))";
+    undelimited_token -> r"(:?\(|\)|')";
     // Incomplete
     intraspace_whitespace -> r"[ \t]";
     // Incomplete
     whitespace -> r"<<intraspace_whitespace>>";
     // Incomplete
     atmosphere -> r"<<whitespace>>";
-    intertoken_space -> r"<<atmosphere>>*";
+    intertoken_space -> r"(:?<<atmosphere>>*)";
     // Incomplete
     identifier -> r"(?P<identifier><<initial>><<subsequent>>*)";
     initial -> r"(:?<<letter>>|<<special_initial>>)";
@@ -129,6 +130,7 @@ fn captures_to_token(captures: Captures) -> Token {
         "(" => return Token::LeftParen,
         ")" => return Token::RightParen,
         "." => return Token::Dot,
+        "'" => return Token::PrefixOp("quote"),
         _ => {},
     };
     if let Some(m) = captures.name("identifier") {

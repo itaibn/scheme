@@ -1,7 +1,15 @@
 
 use std::collections::HashMap;
 
-use scheme::{Binding, Scheme, Environment, Error};
+use scheme::{self, Scheme, Environment, Error};
+
+fn quote(operands: Vec<Scheme>, _: Environment) -> Result<Scheme, Error> {
+    if operands.len() != 1 {
+        Err(Error)
+    } else {
+        Ok(operands[0].clone())
+    }
+}
 
 fn is_integer(args: Vec<Scheme>, _: Environment) -> Result<Scheme, Error> {
     if args.len() == 1 {
@@ -131,7 +139,7 @@ pub fn initial_environment() -> Environment {
 
     {
         let mut add_fn = |name: &'static str, func| hashmap.insert(
-            name.to_string(), Binding::Variable(Scheme::builtin(func)));
+            name.to_string(), scheme::Binding::Variable(Scheme::builtin(func)));
             
         add_fn("integer?", is_integer);
         // Rename
@@ -147,6 +155,10 @@ pub fn initial_environment() -> Environment {
         add_fn("boolean?", is_boolean);
         add_fn("not", not);
     }
+    hashmap.insert("lambda".to_string(),
+        scheme::Binding::Syntax(scheme::lambda));
+    hashmap.insert("quote".to_string(),
+        scheme::Binding::Syntax(quote));
 
     Environment::from_hashmap(hashmap)
 }

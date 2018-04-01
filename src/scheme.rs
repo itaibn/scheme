@@ -50,7 +50,10 @@ pub struct EnvironmentData {
 #[derive(Clone, Debug, PartialEq)]
 pub enum Binding {
     Variable(Scheme),
+    Syntax(BuiltinSyntax),
 }
+
+type BuiltinSyntax = Builtin;
 
 impl Scheme {
     fn from_data(data: SchemeData) -> Scheme {
@@ -177,28 +180,18 @@ impl Scheme {
                 Err(Error)
             }
         } else if let Some((operator, operands_linked)) = self.as_pair() {
-            // TODO: Special forms
-            if let Some("lambda") = operator.as_symbol() {
-                let (formals, body) = operands_linked.as_pair().ok_or(Error)?;
-                //let binder = formals.as_symbol().ok_or(Error)?;
-                let (expr, null) = body.as_pair().ok_or(Error)?;
-                if !null.is_null() {
-                    return Err(Error);
+            if let Some(x) = operator.as_symbol() {
+                if let Some(Binding::Syntax(form)) = env.lookup_binding(x) {
+                    return form(operands_linked.into_vec()?, env.clone())
                 }
-                Ok(Scheme::lambda(Lambda {
-                    binder: Formals::from_object(formals.clone())?,
-                    body: expr.clone(),
-                    environment: env.clone(),
-                }))
-            } else {
-                // Procedure call
-                let operands = operands_linked.into_vec()?;
-                let procedure = operator.eval(env)?;
-                let arguments = operands.into_iter()
-                                        .map(|arg| arg.eval(env))
-                                        .collect::<Result<Vec<_>, _>>()?;
-                procedure.apply(arguments, env)
             }
+            // Procedure call
+            let operands = operands_linked.into_vec()?;
+            let procedure = operator.eval(env)?;
+            let arguments = operands.into_iter()
+                                    .map(|arg| arg.eval(env))
+                                    .collect::<Result<Vec<_>, _>>()?;
+            procedure.apply(arguments, env)
         } else if self.as_int().is_some() {
             Ok(self.clone())
         } else {
@@ -376,6 +369,22 @@ impl Environment {
     }
 }
 
+pub fn lambda(operands: Vec<Scheme>, env: Environment) -> Result<Scheme, Error>
+{
+    let operands_linked = Scheme::list_from_iter(operands);
+    let (formals, body) = operands_linked.as_pair().ok_or(Error)?;
+    //let binder = formals.as_symbol().ok_or(Error)?;
+    let (expr, null) = body.as_pair().ok_or(Error)?;
+    if !null.is_null() {
+        return Err(Error);
+    }
+    Ok(Scheme::lambda(Lambda {
+        binder: Formals::from_object(formals.clone())?,
+        body: expr.clone(),
+        environment: env.clone(),
+    }))
+}
+
 #[cfg(test)]
 mod test {
     use builtin::initial_environment;
@@ -414,5 +423,11 @@ mod test {
         comparison("((lambda (x . y) (cons y x)) 2 3 4)", Scheme::cons(
             Scheme::cons(Scheme::int(3), Scheme::cons(Scheme::int(4),
             Scheme::null())), Scheme::int(2)));
+    }
+
+    #[test]
+    fn test_quote() {
+        comparison("''foo", Scheme::cons(Scheme::symbol("quote".to_string()),
+            Scheme::cons(Scheme::symbol("foo".to_string()), Scheme::null())));
     }
 }
