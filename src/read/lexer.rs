@@ -59,7 +59,7 @@ grammar! {
     digit -> r"[0-9]";
     explicit_sign -> r"[+-]";
     special_subsequent -> r"(:?<<explicit_sign>>|[.@])";
-    boolean -> "(?P<truey>#t|#true)|(?P<falsey>#f|#false)";
+    boolean -> "(?P<truey>#true|#t)|(?P<falsey>#false|#f)";
     // Incomplete
     number -> r"(?P<uint>[0-9]+)";
 }

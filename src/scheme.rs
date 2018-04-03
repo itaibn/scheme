@@ -192,7 +192,7 @@ impl Scheme {
                                     .map(|arg| arg.eval(env))
                                     .collect::<Result<Vec<_>, _>>()?;
             procedure.apply(arguments, env)
-        } else if self.as_int().is_some() {
+        } else if self.as_int().is_some() || self.as_boolean().is_some() {
             Ok(self.clone())
         } else {
             Err(Error)
