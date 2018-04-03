@@ -31,7 +31,7 @@ macro_rules! grammar {
 
 // No unicode support
 grammar! {
-    capture_token -> "^<<intertoken_space>><<token>>";
+    capture_token -> "(?i)^<<intertoken_space>><<token>>";
     check_delimiter -> "^<<delimiter>>";
 
     // Incomplete

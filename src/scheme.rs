@@ -430,4 +430,9 @@ mod test {
         comparison("''foo", Scheme::cons(Scheme::symbol("quote".to_string()),
             Scheme::cons(Scheme::symbol("foo".to_string()), Scheme::null())));
     }
+
+    #[test]
+    fn test_bool() {
+        comparison("#TrUe", Scheme::boolean(true));
+    }
 }
