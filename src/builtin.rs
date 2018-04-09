@@ -11,6 +11,24 @@ fn quote(operands: Vec<Scheme>, _: Environment) -> Result<Scheme, Error> {
     }
 }
 
+fn syntax_if(operands: Vec<Scheme>, env: Environment) -> Result<Scheme, Error> {
+    if operands.len() != 3 {
+        Err(Error)
+    } else {
+        let mut iter = operands.into_iter();
+        let cond = iter.next().unwrap();
+        let if_true = iter.next().unwrap();
+        let if_false = iter.next().unwrap();
+        assert_eq!(iter.next(), None);
+
+        if cond.eval(&env)?.truey() {
+            if_true.eval(&env)
+        } else {
+            if_false.eval(&env)
+        }
+    }
+}
+
 fn is_integer(args: Vec<Scheme>, _: Environment) -> Result<Scheme, Error> {
     if args.len() == 1 {
         Ok(Scheme::boolean(args[0].as_int().is_some()))
@@ -159,6 +177,8 @@ pub fn initial_environment() -> Environment {
         scheme::Binding::Syntax(scheme::lambda));
     hashmap.insert("quote".to_string(),
         scheme::Binding::Syntax(quote));
+    hashmap.insert("if".to_string(),
+        scheme::Binding::Syntax(syntax_if));
 
     Environment::from_hashmap(hashmap)
 }
