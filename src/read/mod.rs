@@ -85,3 +85,8 @@ impl<'a> Reader<'a> {
         Ok(list_expr)
     }
 }
+
+#[test]
+fn test_read_0() {
+    read("0").unwrap();
+}

@@ -1,7 +1,7 @@
 
 use std::collections::HashMap;
 
-use regex::{Captures, Regex};
+use regex::{Captures, Regex, RegexBuilder};
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum Token {
@@ -31,11 +31,12 @@ macro_rules! grammar {
 
 // No unicode support
 grammar! {
-    capture_token -> "(?i)^<<intertoken_space>><<token>>";
+    //capture_token -> "(?ix)^<<intertoken_space>><<token>>";
+    capture_token -> "^<<intertoken_space>><<token>>";
     check_delimiter -> "^<<delimiter>>";
 
     // Incomplete
-    delimiter -> r"(:?[|() \t\n\r]|$)";
+    delimiter -> r"(:?[|()\ \t\n\r]|$)";
     token ->
         r"(?P<token><<delimited_token>>|<<undelimited_token>>)";
     // Incomplete
@@ -44,7 +45,7 @@ grammar! {
     // Incomplete
     undelimited_token -> r"(:?\(|\)|')";
     // Incomplete
-    intraspace_whitespace -> r"[ \t]";
+    intraspace_whitespace -> r"[\ \t]";
     // Incomplete
     whitespace -> r"<<intraspace_whitespace>>";
     // Incomplete
@@ -59,16 +60,34 @@ grammar! {
     digit -> r"[0-9]";
     explicit_sign -> r"[+-]";
     special_subsequent -> r"(:?<<explicit_sign>>|[.@])";
-    boolean -> "(?P<truey>#true|#t)|(?P<falsey>#false|#f)";
-    // Incomplete
-    number -> r"(?P<uint>[0-9]+)";
+    boolean -> r"(?P<truey>\#true|\#t)|(?P<falsey>\#false|\#f)";
+    number -> r"<<uinteger>>";
+/*
+    number -> r"(?P<number><<prefix>><<complex>>)";
+    complex -> r"(:?<<real>>|<<real>>@<<real>>|<<real>>\+<<ureal>>i|\
+        <<real>>\-<<ureal>>i|<<real>>\+i|<<real>>\-i|<<real>><<infnan>>i|\
+        \+<<ureal>>i|\-<<ureal>>i|<<infnan>>i|\+i|\-i)";
+    real -> r"(:?<<sign>><ureal>>|<<infnan>>)";
+    ureal -> r"(:?<<uinteger>><<suffix>>|\.<<digit>>+<<suffix>>|
+        <<digit>>+\.<<digit>>*<<suffix>>)";
+*/
+    uinteger -> r"(?P<uint><<digit>>+)";
+/*
+    prefix -> r"(:?<<radix>><<exactness>>|<<exactness>><<radix>>)";
+    infnan -> r"(:?\+inf.0|-inf.0|\+nan.0|-nan.0)";
+    suffix -> r"(:?<<exponent_marker>><<sign>><<digit>>+)?";
+    exponent_marker -> r"e";
+    sign -> r"[+-]?";
+    exactness -> r"(:?\#[ei])?";
+    radix -> r"(:?\#[bodx])?";
+*/
 }
 
 lazy_static! {
-    static ref REGEX_STRINGS: HashMap<&'static str, String> = {
+    static ref REGEX: HashMap<&'static str, (String, Regex)> = {
         let re = Regex::new(r"<<([a-z_]*)>>").unwrap();
         let mut done = false;
-        let mut res: HashMap<&'static str, String> = HashMap::new();
+        let mut res: HashMap<&'static str, (String, Regex)> = HashMap::new();
         while !done {
             done = true;
             let mut progress = false;
@@ -81,7 +100,7 @@ lazy_static! {
                     let key = m.get(1).unwrap().as_str();
                     match res.get(key) {
                         Some(value) => {
-                            value.to_string()
+                            value.0.to_string()
                         },
                         None => {
                             success = false;
@@ -90,7 +109,14 @@ lazy_static! {
                     }
                 });
                 if success {
-                    res.insert(class, replacement.into_owned());
+                    let mut builder = RegexBuilder::new(&replacement);
+                    builder.case_insensitive(true).ignore_whitespace(true);
+                    let regex = builder.build().unwrap_or_else(|err|
+                        panic!("Error parsing lexer regex {}\n\nRegex pattern: \
+                            {}\nExpanded: {}\nError: {}", class, expression,
+                            replacement, err)
+                    );
+                    res.insert(class, (replacement.into_owned(), regex));
                     progress = true;
                 } else {
                     done = false;
@@ -103,7 +129,7 @@ lazy_static! {
 }
 
 fn regex_class(class: &'static str) -> Regex {
-    Regex::new(REGEX_STRINGS.get(class).unwrap()).unwrap()
+    REGEX.get(class).unwrap().1.clone()
 }
 
 fn read_token(input: &str) -> Option<(Token, &str)> {
@@ -169,19 +195,27 @@ impl<'a> Iterator for Lexer<'a> {
 
 #[test]
 pub fn test_regex_strings_gen() {
-    ::lazy_static::initialize(&REGEX_STRINGS);
+    ::lazy_static::initialize(&REGEX);
 }
 
+
+// Deprecated
 #[test]
 fn test_valid_regex() {
     for class in GRAMMAR.keys() {
-        let string = REGEX_STRINGS.get(class)
+        let string = &REGEX.get(class)
                         .expect(&format!("REGEX_STRINGS doesn't contain key \
-                        {:?}", class));
-        Regex::new(string).expect(
-            &format!("Regex for {} doesn't compile (regex = {:?})", class,
+                        {:?}", class)).0;
+        RegexBuilder::new(string).case_insensitive(true).ignore_whitespace(true).build()
+            .expect(&format!("Regex for {} doesn't compile (regex = {:?})", class,
             string));
     }
+}
+
+#[test]
+fn test_whitespace_0() {
+    let re = regex_class("whitespace");
+    assert!(re.is_match(" "));
 }
 
 #[test]
