@@ -161,7 +161,7 @@ impl Scheme {
         }
     }
 
-    fn list_from_iter<I: IntoIterator<Item=Scheme>>(iter: I) -> Scheme where
+    pub fn list<I: IntoIterator<Item=Scheme>>(iter: I) -> Scheme where
         I::IntoIter : DoubleEndedIterator {
         
         let mut res = Scheme::null();
@@ -314,7 +314,7 @@ impl Formals {
 
         match self.tail_var {
             Some(ref varname) => {
-                env.insert(varname, Scheme::list_from_iter(
+                env.insert(varname, Scheme::list(
                     args[n..].to_vec()));
                 Ok(())
             },
@@ -371,7 +371,7 @@ impl Environment {
 
 pub fn lambda(operands: Vec<Scheme>, env: Environment) -> Result<Scheme, Error>
 {
-    let operands_linked = Scheme::list_from_iter(operands);
+    let operands_linked = Scheme::list(operands);
     let (formals, body) = operands_linked.as_pair().ok_or(Error)?;
     //let binder = formals.as_symbol().ok_or(Error)?;
     let (expr, null) = body.as_pair().ok_or(Error)?;

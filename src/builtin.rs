@@ -136,6 +136,10 @@ fn cdr(args: Vec<Scheme>, _: Environment) -> Result<Scheme, Error> {
     }
 }
 
+fn list(args: Vec<Scheme>, _: Environment) -> Result<Scheme, Error> {
+    Ok(Scheme::list(args))
+}
+
 fn is_boolean(args: Vec<Scheme>, _: Environment) -> Result<Scheme, Error> {
     if args.len() == 1 {
         Ok(Scheme::boolean(args[0].as_boolean().is_some()))
@@ -170,6 +174,7 @@ pub fn initial_environment() -> Environment {
         add_fn("cons", cons);
         add_fn("car", car);
         add_fn("cdr", cdr);
+        add_fn("list", list);
         add_fn("boolean?", is_boolean);
         add_fn("not", not);
     }
