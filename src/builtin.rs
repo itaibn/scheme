@@ -140,6 +140,14 @@ fn list(args: Vec<Scheme>, _: Environment) -> Result<Scheme, Error> {
     Ok(Scheme::list(args))
 }
 
+fn length(args: Vec<Scheme>, _: Environment) -> Result<Scheme, Error> {
+    if args.len() == 1 {
+        Ok(Scheme::int(args[0].into_vec()?.len() as i64))
+    } else {
+        Err(Error)
+    }
+}
+
 fn is_boolean(args: Vec<Scheme>, _: Environment) -> Result<Scheme, Error> {
     if args.len() == 1 {
         Ok(Scheme::boolean(args[0].as_boolean().is_some()))
@@ -175,6 +183,7 @@ pub fn initial_environment() -> Environment {
         add_fn("car", car);
         add_fn("cdr", cdr);
         add_fn("list", list);
+        add_fn("length", length);
         add_fn("boolean?", is_boolean);
         add_fn("not", not);
     }

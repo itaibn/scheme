@@ -148,7 +148,7 @@ impl Scheme {
     }
 
     // Use iterators
-    fn into_vec(&self) -> Result<Vec<Scheme>, Error> {
+    pub fn into_vec(&self) -> Result<Vec<Scheme>, Error> {
         let mut cur_elems = Vec::new();
         let mut head = self;
 
@@ -436,5 +436,10 @@ mod test {
     #[test]
     fn test_bool() {
         comparison("#TrUe", Scheme::boolean(true));
+    }
+
+    #[test]
+    fn test_length() {
+        comparison("(length (cons 1 (list 2 3 4 5)))", Scheme::int(5));
     }
 }
