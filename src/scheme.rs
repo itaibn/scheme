@@ -1,4 +1,7 @@
 
+// For some reason importing std::borrow::Borrow produces a name collision with
+// RefCell::borrow but just importing std::borrow doesn't.
+use std::borrow;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fmt;
@@ -161,12 +164,12 @@ impl Scheme {
         }
     }
 
-    pub fn list<I: IntoIterator<Item=Scheme>>(iter: I) -> Scheme where
-        I::IntoIter : DoubleEndedIterator {
-        
+    pub fn list<E: borrow::Borrow<Scheme>, I: IntoIterator<Item=E>>(iter: I) ->
+        Scheme where I::IntoIter : DoubleEndedIterator {
+
         let mut res = Scheme::null();
         for elem in iter.into_iter().rev() {
-            res = Scheme::cons(elem, res);
+            res = Scheme::cons(elem.borrow().clone(), res);
         }
         res
     }
@@ -314,8 +317,7 @@ impl Formals {
 
         match self.tail_var {
             Some(ref varname) => {
-                env.insert(varname, Scheme::list(
-                    args[n..].to_vec()));
+                env.insert(varname, Scheme::list(&args[n..]));
                 Ok(())
             },
             None => {
