@@ -16,6 +16,7 @@ enum SchemeData {
     Symbol(String),
     Boolean(bool),
     Int(i64),
+    Character(char),
     Builtin(Builtin),
     Lambda(Lambda),
 }
@@ -71,12 +72,16 @@ impl Scheme {
         Scheme::from_data(SchemeData::Cons(fst, snd))
     }
 
-    pub fn symbol(s: String) -> Scheme {
-        Scheme::from_data(SchemeData::Symbol(s))
+    pub fn symbol<S:ToString>(s: S) -> Scheme {
+        Scheme::from_data(SchemeData::Symbol(s.to_string()))
     }
 
     pub fn boolean(b: bool) -> Scheme {
         Scheme::from_data(SchemeData::Boolean(b))
+    }
+
+    pub fn character(c: char) -> Scheme {
+        Scheme::from_data(SchemeData::Character(c))
     }
 
     pub fn int(n: i64) -> Scheme {
@@ -93,6 +98,12 @@ impl Scheme {
 
     pub fn is_null(&self) -> bool {
         *self.0 == SchemeData::Null
+    }
+
+    pub fn is_literal(&self) -> bool {
+           self.as_boolean().is_some()
+        || self.as_int().is_some()
+        || self.as_character().is_some()
     }
 
     pub fn as_pair(&self) -> Option<(&Scheme, &Scheme)> {
@@ -114,6 +125,14 @@ impl Scheme {
     pub fn as_boolean(&self) -> Option<bool> {
         if let SchemeData::Boolean(b) = *self.0 {
             Some(b)
+        } else {
+            None
+        }
+    }
+
+    pub fn as_character(&self) -> Option<char> {
+        if let SchemeData::Character(c) = *self.0 {
+            Some(c)
         } else {
             None
         }
@@ -195,7 +214,7 @@ impl Scheme {
                                     .map(|arg| arg.eval(env))
                                     .collect::<Result<Vec<_>, _>>()?;
             procedure.apply(arguments, env)
-        } else if self.as_int().is_some() || self.as_boolean().is_some() {
+        } else if self.is_literal() {
             Ok(self.clone())
         } else {
             Err(Error)
@@ -441,5 +460,16 @@ mod test {
     #[test]
     fn test_length() {
         comparison("(length (cons 1 (list 2 3 4 5)))", Scheme::int(5));
+    }
+
+    #[test]
+    fn test_character() {
+        comparison("#\\n", Scheme::character('n'));
+    }
+
+    #[test]
+    fn test_pair_syntax() {
+        comparison("'(a . b)", Scheme::cons(Scheme::symbol("a"),
+            Scheme::symbol("b")));
     }
 }

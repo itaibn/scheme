@@ -58,6 +58,7 @@ impl<'a> Reader<'a> {
                     Scheme::cons(operand, Scheme::null())))
             }
             Some(Token::Boolean(b)) => Ok(Scheme::boolean(b)),
+            Some(Token::Character(c)) => Ok(Scheme::character(c)),
             Some(Token::Number(n)) => Ok(Scheme::int(n)),
             _ => Err("Invalid expression"),
         }

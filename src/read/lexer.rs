@@ -12,6 +12,7 @@ pub enum Token {
     Identifier(String),
     Boolean(bool),
     Number(i64),
+    Character(char),
 }
 
 #[derive(Debug)]
@@ -41,7 +42,7 @@ grammar! {
         r"(?P<token><<delimited_token>>|<<undelimited_token>>)";
     // Incomplete
     delimited_token ->
-        r"(?P<needs_delimiter><<identifier>>|<<boolean>>|<<number>>|\.)";
+        r"(?P<needs_delimiter><<identifier>>|<<boolean>>|<<number>>|<<character>>|\.)";
     // Incomplete
     undelimited_token -> r"(:?\(|\)|')";
     // Incomplete
@@ -61,6 +62,7 @@ grammar! {
     explicit_sign -> r"[+-]";
     special_subsequent -> r"(:?<<explicit_sign>>|[.@])";
     boolean -> r"(?P<truey>\#true|\#t)|(?P<falsey>\#false|\#f)";
+    character -> r"(?:\#\\(?P<char>.))";
     number -> r"<<uinteger>>";
 /*
     number -> r"(?P<number><<prefix>><<complex>>)";
@@ -161,6 +163,10 @@ fn captures_to_token(captures: Captures) -> Token {
     };
     if let Some(m) = captures.name("identifier") {
         return Token::Identifier(m.as_str().to_string());
+    }
+    if let Some(c1) = captures.name("char") {
+        let c = c1.as_str().chars().next().unwrap();
+        return Token::Character(c);
     }
     if let Some(m) = captures.name("uint") {
         let n = i64::from_str_radix(m.as_str(), 10).unwrap();
