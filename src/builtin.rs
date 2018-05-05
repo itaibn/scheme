@@ -148,6 +148,14 @@ fn length(args: Vec<Scheme>, _: Environment) -> Result<Scheme, Error> {
     }
 }
 
+fn is_symbol(args: Vec<Scheme>, _: Environment) -> Result<Scheme, Error> {
+    if args.len() == 1 {
+        Ok(Scheme::boolean(args[0].as_symbol().is_some()))
+    } else {
+        Err(Error)
+    }
+}
+
 fn is_boolean(args: Vec<Scheme>, _: Environment) -> Result<Scheme, Error> {
     if args.len() == 1 {
         Ok(Scheme::boolean(args[0].as_boolean().is_some()))
@@ -184,6 +192,7 @@ pub fn initial_environment() -> Environment {
         add_fn("cdr", cdr);
         add_fn("list", list);
         add_fn("length", length);
+        add_fn("symbol?", is_symbol);
         add_fn("boolean?", is_boolean);
         add_fn("not", not);
     }
