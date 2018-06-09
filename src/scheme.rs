@@ -11,14 +11,17 @@ use std::rc::Rc;
 // TODO: Rethink derive(PartialEq)
 #[derive(Clone, Debug, PartialEq)]
 enum SchemeData {
+    Boolean(bool),
+    Character(char),
     Null,
     Cons(Scheme, Scheme),
-    Symbol(String),
-    Boolean(bool),
-    Int(i64),
-    Character(char),
     Builtin(Builtin),
     Lambda(Lambda),
+    Symbol(String),
+    Bytevector(Vec<u8>),
+    Int(i64),
+    String(Vec<char>),
+    Vector(Vec<Scheme>),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -64,62 +67,8 @@ impl Scheme {
         Scheme(Rc::new(data))
     }
 
-    pub fn null() -> Scheme {
-        Scheme::from_data(SchemeData::Null)
-    }
-
-    pub fn cons(fst: Scheme, snd: Scheme) -> Scheme {
-        Scheme::from_data(SchemeData::Cons(fst, snd))
-    }
-
-    pub fn symbol<S:ToString>(s: S) -> Scheme {
-        Scheme::from_data(SchemeData::Symbol(s.to_string()))
-    }
-
     pub fn boolean(b: bool) -> Scheme {
         Scheme::from_data(SchemeData::Boolean(b))
-    }
-
-    pub fn character(c: char) -> Scheme {
-        Scheme::from_data(SchemeData::Character(c))
-    }
-
-    pub fn int(n: i64) -> Scheme {
-        Scheme::from_data(SchemeData::Int(n))
-    }
-
-    pub(crate) fn builtin(func: Builtin) -> Scheme {
-        Scheme::from_data(SchemeData::Builtin(func))
-    }
-
-    fn lambda(lam: Lambda) -> Scheme {
-        Scheme::from_data(SchemeData::Lambda(lam))
-    }
-
-    pub fn is_null(&self) -> bool {
-        *self.0 == SchemeData::Null
-    }
-
-    pub fn is_literal(&self) -> bool {
-           self.as_boolean().is_some()
-        || self.as_int().is_some()
-        || self.as_character().is_some()
-    }
-
-    pub fn as_pair(&self) -> Option<(&Scheme, &Scheme)> {
-        if let SchemeData::Cons(ref x, ref y) = *self.0 {
-            Some((x, y))
-        } else {
-            None
-        }
-    }
-
-    pub fn as_symbol(&self) -> Option<&str> {
-        if let SchemeData::Symbol(ref s) = *self.0 {
-            Some(&*s)
-        } else {
-            None
-        }
     }
 
     pub fn as_boolean(&self) -> Option<bool> {
@@ -130,6 +79,10 @@ impl Scheme {
         }
     }
 
+    pub fn character(c: char) -> Scheme {
+        Scheme::from_data(SchemeData::Character(c))
+    }
+
     pub fn as_character(&self) -> Option<char> {
         if let SchemeData::Character(c) = *self.0 {
             Some(c)
@@ -138,12 +91,28 @@ impl Scheme {
         }
     }
 
-    pub fn as_int(&self) -> Option<i64> {
-        if let SchemeData::Int(n) = *self.0 {
-            Some(n)
+    pub fn null() -> Scheme {
+        Scheme::from_data(SchemeData::Null)
+    }
+
+    pub fn is_null(&self) -> bool {
+        *self.0 == SchemeData::Null
+    }
+
+    pub fn cons(fst: Scheme, snd: Scheme) -> Scheme {
+        Scheme::from_data(SchemeData::Cons(fst, snd))
+    }
+
+    pub fn as_pair(&self) -> Option<(&Scheme, &Scheme)> {
+        if let SchemeData::Cons(ref x, ref y) = *self.0 {
+            Some((x, y))
         } else {
             None
         }
+    }
+
+    pub(crate) fn builtin(func: Builtin) -> Scheme {
+        Scheme::from_data(SchemeData::Builtin(func))
     }
 
     fn as_builtin(&self) -> Option<Builtin> {
@@ -154,12 +123,89 @@ impl Scheme {
         }
     }
 
+    fn lambda(lam: Lambda) -> Scheme {
+        Scheme::from_data(SchemeData::Lambda(lam))
+    }
+
     fn as_lambda(&self) -> Option<Lambda> {
         if let SchemeData::Lambda(ref lam) = *self.0 {
             Some(lam.clone())
         } else {
             None
         }
+    }
+
+    fn is_procedure(&self) -> bool {
+        self.as_builtin().is_some() || self.as_lambda().is_some()
+    }
+
+    pub fn symbol<S:ToString>(s: S) -> Scheme {
+        Scheme::from_data(SchemeData::Symbol(s.to_string()))
+    }
+
+    pub fn as_symbol(&self) -> Option<&str> {
+        if let SchemeData::Symbol(ref s) = *self.0 {
+            Some(&*s)
+        } else {
+            None
+        }
+    }
+
+    pub fn bytevector(bvec: Vec<u8>) -> Scheme {
+        Scheme::from_data(SchemeData::Bytevector(bvec))
+    }
+
+    pub fn as_bytevector(&self) -> Option<&[u8]> {
+        if let SchemeData::Bytevector(ref bvec) = *self.0 {
+            Some(&*bvec)
+        } else {
+            None
+        }
+    }
+
+    pub fn int(n: i64) -> Scheme {
+        Scheme::from_data(SchemeData::Int(n))
+    }
+
+    pub fn as_int(&self) -> Option<i64> {
+        if let SchemeData::Int(n) = *self.0 {
+            Some(n)
+        } else {
+            None
+        }
+    }
+
+    pub fn string(s: Vec<char>) -> Scheme {
+        Scheme::from_data(SchemeData::String(s))
+    }
+
+    pub fn as_string(&self) -> Option<&[char]> {
+        if let SchemeData::String(ref s) = *self.0 {
+            Some(&*s)
+        } else {
+            None
+        }
+    }
+
+    pub fn vector(vec: Vec<Scheme>) -> Scheme {
+        Scheme::from_data(SchemeData::Vector(vec))
+    }
+
+    pub fn as_vector(&self) -> Option<&[Scheme]> {
+        if let SchemeData::Vector(ref vec) = *self.0 {
+            Some(&*vec)
+        } else {
+            None
+        }
+    }
+
+    pub fn is_literal(&self) -> bool {
+           self.as_boolean().is_some()
+        || self.as_int().is_some()
+        || self.as_character().is_some()
+        || self.as_bytevector().is_some()
+        || self.as_string().is_some()
+        || self.as_vector().is_some()
     }
 
     pub fn truey(&self) -> bool {

@@ -6,6 +6,8 @@ use regex::{Captures, Regex, RegexBuilder};
 #[derive(Debug, PartialEq, Eq)]
 pub enum Token {
     LeftParen,
+    LeftVector,
+    LeftBytevector,
     RightParen,
     Dot,
     PrefixOp(&'static str),
@@ -13,6 +15,7 @@ pub enum Token {
     Boolean(bool),
     Number(i64),
     Character(char),
+    String(Vec<char>),
 }
 
 #[derive(Debug)]
@@ -43,8 +46,7 @@ grammar! {
     // Incomplete
     delimited_token ->
         r"(?P<needs_delimiter><<identifier>>|<<boolean>>|<<number>>|<<character>>|\.)";
-    // Incomplete
-    undelimited_token -> r"(:?\(|\)|')";
+    undelimited_token -> r"(:?<<string>>|\(|\)|\#\(|\#u8\(|'|`|,|,@)";
     // Incomplete
     intraspace_whitespace -> r"[\ \t]";
     // Incomplete
@@ -63,6 +65,8 @@ grammar! {
     special_subsequent -> r"(:?<<explicit_sign>>|[.@])";
     boolean -> r"(?P<truey>\#true|\#t)|(?P<falsey>\#false|\#f)";
     character -> r"(?:\#\\(?P<char>.))";
+    // Incomplete
+    string -> "(?P<string>\"\")";
     number -> r"<<uinteger>>";
 /*
     number -> r"(?P<number><<prefix>><<complex>>)";
@@ -157,8 +161,13 @@ fn captures_to_token(captures: Captures) -> Token {
     match m.as_str() {
         "(" => return Token::LeftParen,
         ")" => return Token::RightParen,
-        "." => return Token::Dot,
+        "#(" => return Token::LeftVector,
+        "#u8(" | "#U8(" => return Token::LeftBytevector,
         "'" => return Token::PrefixOp("quote"),
+        "`" => return Token::PrefixOp("quasiquote"),
+        "," => return Token::PrefixOp("unquote"),
+        ",@" => return Token::PrefixOp("unquote-splicing"),
+        "." => return Token::Dot,
         _ => {},
     };
     if let Some(m) = captures.name("identifier") {
@@ -172,6 +181,10 @@ fn captures_to_token(captures: Captures) -> Token {
         let n = i64::from_str_radix(m.as_str(), 10).unwrap();
         return Token::Number(n);
     }
+    // Stub
+    if captures.name("string").is_some() {
+        return Token::String(Vec::new())
+    }
     if captures.name("truey").is_some() {
         return Token::Boolean(true);
     }
@@ -179,7 +192,7 @@ fn captures_to_token(captures: Captures) -> Token {
         return Token::Boolean(false);
     }
     panic!("{:?} recognized as token, but doesn't match any specific class of\
-        token", captures.get(0).unwrap().as_str())
+        tokens that I can parse", captures.get(0).unwrap().as_str())
 }
 
 impl<'a> Lexer<'a> {
