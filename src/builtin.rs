@@ -1,6 +1,7 @@
 
 use std::collections::HashMap;
 
+use runtime;
 use scheme::{self, Scheme, Environment, Error};
 
 fn quote(operands: Vec<Scheme>, _: Environment) -> Result<Scheme, Error> {
@@ -197,7 +198,7 @@ pub fn initial_environment() -> Environment {
         add_fn("not", not);
     }
     hashmap.insert("lambda".to_string(),
-        scheme::Binding::Syntax(scheme::lambda));
+        scheme::Binding::Syntax(runtime::lambda));
     hashmap.insert("quote".to_string(),
         scheme::Binding::Syntax(quote));
     hashmap.insert("if".to_string(),
