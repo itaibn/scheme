@@ -30,12 +30,48 @@ fn syntax_if(operands: Vec<Scheme>, env: Environment) -> Result<Scheme, Error> {
     }
 }
 
+// A predicate which is false for any argument, and gives an error when given
+// zero or more than one arguments. Currently a few predicates alias to this
+// since I don't support the full set of Scheme types.
+fn false_predicate(args: Vec<Scheme>, _: Environment) -> Result<Scheme, Error> {
+    if args.len() == 1 {
+        Ok(Scheme::boolean(false))
+    } else {
+        Err(Error)
+    }
+}
+
+// Temporary: Integers are the only numerical types, so all other type
+// predicates are aliases of integer?
 fn is_integer(args: Vec<Scheme>, _: Environment) -> Result<Scheme, Error> {
     if args.len() == 1 {
         Ok(Scheme::boolean(args[0].as_int().is_some()))
     } else {
         Err(Error)
     }
+}
+
+fn num_eq(args: Vec<Scheme>, _: Environment) -> Result<Scheme, Error> {
+    if args.len() < 2 {
+        return Err(Error)
+    }
+    let fst = match args[0].as_int() {
+        Some(n) => n,
+        None => return Err(Error),
+    };
+    for elem in &args[1..] {
+        match elem.as_int() {
+            Some(other) => {
+                if fst == other {
+                    continue;
+                } else {
+                    return Ok(Scheme::boolean(false));
+                }
+            },
+            None => return Err(Error),
+        }
+    }
+    Ok(Scheme::boolean(true))
 }
 
 fn sum(args: Vec<Scheme>, _: Environment) -> Result<Scheme, Error> {
@@ -181,6 +217,19 @@ pub fn initial_environment() -> Environment {
             name.to_string(), scheme::Binding::Variable(Scheme::builtin(func)));
             
         add_fn("integer?", is_integer);
+        // Temporary: Integers are the only numerical types, so all other type
+        // predicates and some other numerical predicates are aliases of
+        // integer?
+        add_fn("number?", is_integer);
+        add_fn("complex?", is_integer);
+        add_fn("real?", is_integer);
+        add_fn("exact?", is_integer);
+        add_fn("inexact?", false_predicate);
+        add_fn("exact-integer?", is_integer);
+        add_fn("finite?", is_integer);
+        add_fn("infinite?", false_predicate);
+        add_fn("nan?", false_predicate);
+        add_fn("=", num_eq);
         // Rename
         add_fn("sum", sum);
         // Rename
