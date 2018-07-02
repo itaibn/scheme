@@ -240,6 +240,27 @@ impl fmt::Display for Scheme {
             write!(f, "#{}", c)
         } else if let Some(n) = self.as_int() {
             write!(f, "{}", n)
+        } else if let Some(c) = self.as_character() {
+            // TODO: escaping appropriate characters
+            write!(f, "#\\{}", c)
+        } else if let Some(s) = self.as_string() {
+            let to_string: String = s.iter().collect();
+            // TODO: Scheme-specific escaping
+            write!(f, "{:?}", to_string)
+        } else if let Some(vec) = self.as_vector() {
+            write!(f, "#(")?;
+            for (i, x) in vec.iter().enumerate() {
+                write!(f, "{}{}", x,
+                    if i < vec.len()-1 {' '} else {')'})?;
+            }
+            Ok(())
+        } else if let Some(bvec) = self.as_bytevector() {
+            write!(f, "#u8(")?;
+            for (i, x) in bvec.iter().enumerate() {
+                write!(f, "{}{}", x,
+                    if i < bvec.len()-1 {' '} else {')'})?;
+            }
+            Ok(())
         } else if let Some(bltin) = self.as_builtin() {
             write!(f, "<builtin at 0x{:x}>", bltin as usize)
         } else if let Some(_) = self.as_lambda() {
