@@ -182,6 +182,7 @@ impl Scheme {
     }
 
     // Use iterators
+    // May get into infinite loops
     pub fn into_vec(&self) -> Result<Vec<Scheme>, Error> {
         let mut cur_elems = Vec::new();
         let mut head = self;
