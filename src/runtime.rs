@@ -3,10 +3,22 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
+use either::{Either, Left, Right};
+
 use scheme::{Error, Scheme};
 
+// Clone-by-reference environment
 #[derive(Clone, Debug, PartialEq)]
 pub struct Environment(Rc<RefCell<EnvironmentData>>);
+
+/*
+// TEMP: Make Environment in Debug easier to read but less informative
+impl fmt::Debug for Environment {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "<environment {:x}>", self.deref() as *const _ as usize)
+    }
+}
+*/
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct EnvironmentData {
@@ -41,9 +53,133 @@ struct Formals {
     tail_var: Option<String>,
 }
 
+#[derive(Debug, Clone)]
+pub struct Continuation(Rc<ContinuationData>);
+
+#[derive(Debug)]
+enum ContinuationData {
+    // Left-to-right evaluation order for now
+    Application {
+        values: Vec<Scheme>,
+        expressions: Vec<Scheme>,
+        environment: Environment,
+        next_continuation: Continuation,
+    },
+    End,
+}
+
+#[derive(Debug)]
+pub struct Task {
+    expression: Scheme,
+    environment: Environment,
+    continuation: Continuation,
+}
+
+impl Continuation {
+    fn from_data(data: ContinuationData) -> Continuation {
+        Continuation(Rc::new(data))
+    }
+
+    // TODO: Make this not call apply, change sig to Either<...>
+    fn pass_value(self, value: Scheme) -> Result<Either<Task, Scheme>, Error> {
+        match *self.0 {
+            ContinuationData::Application {ref values, ref expressions,
+                ref environment, ref next_continuation} => {
+
+                let mut new_values = values.clone();
+                let mut new_expressions = expressions.clone();
+                new_values.push(value);
+                match new_expressions.pop() {
+                    Some(expr) => {
+                        let new_continuation = Continuation::from_data(
+                            ContinuationData::Application {
+                                values: new_values,
+                                expressions: new_expressions,
+                                environment: environment.clone(),
+                                next_continuation: next_continuation.clone(),
+                            });
+                        Ok(Left(Task {
+                            expression: expr,
+                            environment: environment.clone(),
+                            // why no clone necessary?
+                            continuation: new_continuation,
+                        }))
+                    },
+                    None => {
+                        let apply = new_values[0]
+                            .apply(new_values[1..].to_vec(), &environment)?;
+                        next_continuation.clone().pass_value(apply)
+                    },
+                }
+            },
+            ContinuationData::End => Ok(Right(value)),
+        }
+    }
+}
+
+impl Task {
+    pub fn complete(self) -> Result<Scheme, Error> {
+        let mut cur_task = self;
+        loop {
+            match cur_task.step()? {
+                Left(next_task) => cur_task = next_task,
+                Right(result) => return Ok(result),
+            }
+        }
+    }
+
+    pub fn step(self) -> Result<Either<Task, Scheme>, Error> {
+        let Task {expression: expr, environment: env, continuation: cont} =
+            self;
+        if let Some(s) = expr.as_symbol() {
+            if let Some(res) = env.lookup(&s) {
+                cont.pass_value(res.clone())
+            } else {
+                Err(Error)
+            }
+        } else if let Some((operator, operands_linked)) = expr.as_pair() {
+            if let Some(x) = operator.as_symbol() {
+                if let Some(Binding::Syntax(form)) = env.lookup_binding(x) {
+                    return cont.pass_value(
+                        form(operands_linked.into_vec()?, env.clone())?);
+                }
+            }
+            // Procedure call
+            let operands = operands_linked.into_vec()?;
+            let expressions: Vec<_> = operands.into_iter().rev().collect();
+            let new_continuation = Continuation::from_data(
+                ContinuationData::Application {
+                    values: Vec::new(),
+                    expressions: expressions,
+                    environment: env.clone(),
+                    next_continuation: cont,
+                });
+            Ok(Left(Task {
+                expression: operator.clone(),
+                environment: env,
+                continuation: new_continuation
+            }))
+        } else if expr.is_literal() {
+            cont.pass_value(expr.clone())
+        } else {
+            Err(Error)
+        }
+    }
+}
+
 impl Scheme {
-    // Incorporate errors to type signature
     pub fn eval(&self, env: &Environment) -> Result<Scheme, Error> {
+        let continuation = Continuation::from_data(ContinuationData::End);
+        let task = Task {
+            expression: self.clone(),
+            environment: env.clone(),
+            continuation: continuation,
+        };
+        task.complete()
+    }
+
+    #[allow(dead_code)]
+    pub fn old_eval(&self, env: &Environment) -> Result<Scheme, Error> {
         if let Some(s) = self.as_symbol() {
             if let Some(res) = env.lookup(&s) {
                 Ok(res.clone())

@@ -28,7 +28,7 @@ enum SchemeData {
 #[derive(Clone, Debug, PartialEq)]
 pub struct Scheme(Rc<SchemeData>);
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Error;
 
 impl Scheme {
