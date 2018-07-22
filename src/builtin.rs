@@ -4,20 +4,20 @@ use std::collections::HashMap;
 
 use either::{Either, Left, Right};
 
-use runtime::{self, Continuation, Environment, Task};
+use runtime::{self, Continuation, Environment, Expression, Task};
 use scheme::{self, Scheme, Error};
 
-fn quote(operands: Vec<Scheme>, _: Environment, c: Continuation) ->
+fn quote(operands: Vec<Expression>, _: Environment, c: Continuation) ->
     Result<Either<Task, Scheme>, Error> {
 
     if operands.len() != 1 {
         Err(Error)
     } else {
-        Ok(c.pass_value(operands[0].clone()))
+        Ok(c.pass_value(operands[0].0.clone()))
     }
 }
 
-fn syntax_if(operands: Vec<Scheme>, env: Environment, c: Continuation) ->
+fn syntax_if(operands: Vec<Expression>, env: Environment, c: Continuation) ->
     Result<Either<Task, Scheme>, Error> {
 
     if operands.len() != 3 {

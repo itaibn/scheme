@@ -7,6 +7,10 @@ use either::{Either, Left, Right};
 
 use scheme::{Error, Scheme};
 
+/// Wrapper type for unevaluated Scheme expressions.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Expression(pub Scheme);
+
 // Clone-by-reference environment
 #[derive(Clone, Debug, PartialEq)]
 pub struct Environment(Rc<RefCell<EnvironmentData>>);
@@ -37,14 +41,14 @@ pub enum Binding {
 pub type Builtin = fn(Vec<Scheme>, Environment) -> Result<Scheme, Error>;
 
 // pub?
-pub type BuiltinSyntax = fn(Vec<Scheme>, Environment, Continuation) ->
+pub type BuiltinSyntax = fn(Vec<Expression>, Environment, Continuation) ->
     Result<Either<Task, Scheme>, Error>;
 
 // pub?
 #[derive(Debug, Clone, PartialEq)]
 pub struct Lambda {
     binder: Formals,
-    body: Scheme,
+    body: Expression,
     environment: Environment,
 }
 
@@ -62,7 +66,7 @@ enum ContinuationData {
     // Left-to-right evaluation order for now
     Application {
         values: Vec<Scheme>,
-        expressions: Vec<Scheme>,
+        expressions: Vec<Expression>,
         environment: Environment,
         next_continuation: Continuation,
     },
@@ -80,7 +84,7 @@ pub struct Task(TaskEnum);
 #[derive(Clone, Debug)]
 pub enum TaskEnum {
     Eval {
-        expression: Scheme,
+        expression: Expression,
         environment: Environment,
         continuation: Continuation,
     },
@@ -146,7 +150,8 @@ impl Task {
     /// Construct the task for evaluating `expr` in environment `env` & passing
     /// the result to continuation `cont`. Does not do any work in evaluating
     /// `expr`.
-    pub fn eval(expr: Scheme, env: Environment, cont: Continuation) -> Task {
+    pub fn eval(expr: Expression, env: Environment, cont: Continuation) -> Task
+    {
         Task(TaskEnum::Eval {
             expression: expr,
             environment: env,
@@ -181,25 +186,30 @@ impl Task {
         match self.0 {
             TaskEnum::Eval {expression: expr, environment: env, continuation:
                 cont} => {
+
                 if let Some(s) = expr.as_symbol() {
                     if let Some(res) = env.lookup(&s) {
                         Ok(cont.pass_value(res.clone()))
                     } else {
                         Err(Error)
                     }
-                } else if let Some((operator, operands_linked)) = expr.as_pair()
-                {
+                } else if let Some((operator, operands_linked)) =
+                        expr.0.as_pair() {
                     if let Some(x) = operator.as_symbol() {
                         if let Some(Binding::Syntax(form)) =
                             env.lookup_binding(x) {
-                            return Ok(form(operands_linked.into_vec()?,
-                                env.clone(), cont)?);
+                            let operands =
+                                operands_linked.into_vec()?
+                                               .into_iter()
+                                               .map(|val| Expression(val))
+                                               .collect();
+                            return form(operands, env.clone(), cont);
                         }
                     }
                     // Procedure call
                     let operands = operands_linked.into_vec()?;
                     let expressions: Vec<_> = operands.into_iter().rev()
-                            .collect();
+                            .map(|val| Expression(val)).collect();
                     let new_continuation = Continuation::from_data(
                         ContinuationData::Application {
                             values: Vec::new(),
@@ -207,10 +217,10 @@ impl Task {
                             environment: env.clone(),
                             next_continuation: cont,
                         });
-                    Ok(Left(Task::eval(operator.clone(), env,
+                    Ok(Left(Task::eval(Expression(operator.clone()), env,
                         new_continuation)))
-                } else if expr.is_literal() {
-                    Ok(cont.pass_value(expr.clone()))
+                } else if expr.0.is_literal() {
+                    Ok(cont.pass_value(expr.0.clone()))
                 } else {
                     Err(Error)
                 }
@@ -227,7 +237,8 @@ impl Task {
 impl Scheme {
     pub fn eval(&self, env: &Environment) -> Result<Scheme, Error> {
         let continuation = Continuation::from_data(ContinuationData::End);
-        let task = Task::eval(self.clone(), env.clone(), continuation);
+        let task = Task::eval(Expression(self.clone()), env.clone(),
+            continuation);
         task.complete()
     }
 
@@ -239,10 +250,25 @@ impl Scheme {
         } else if let Some(lambda) = self.as_lambda() {
             let new_env = lambda.environment.make_child();
             lambda.binder.match_with_args(args, &new_env)?;
-            lambda.body.eval(&new_env)
+            lambda.body.0.eval(&new_env)
         } else {
             Err(Error)
         }
+    }
+}
+
+impl Expression {
+    pub fn is_literal(&self) -> bool {
+        self.0.is_literal()
+    }
+
+    pub fn as_symbol(&self) -> Option<&str> {
+        self.0.as_symbol()
+    }
+
+    pub fn as_pair(&self) -> Option<(Expression, Expression)> {
+        self.0.as_pair().map(|(a, b)|
+            (Expression(a.clone()), Expression(b.clone())))
     }
 }
 
@@ -287,10 +313,10 @@ impl Environment {
     }
 }
 
-pub fn lambda(operands: Vec<Scheme>, env: Environment, c: Continuation) ->
+pub fn lambda(operands: Vec<Expression>, env: Environment, c: Continuation) ->
     Result<Either<Task, Scheme>, Error> {
 
-    let operands_linked = Scheme::list(operands);
+    let operands_linked = Scheme::list(operands.into_iter().map(|expr| expr.0));
     let (formals, body) = operands_linked.as_pair().ok_or(Error)?;
     //let binder = formals.as_symbol().ok_or(Error)?;
     let (expr, null) = body.as_pair().ok_or(Error)?;
@@ -299,7 +325,7 @@ pub fn lambda(operands: Vec<Scheme>, env: Environment, c: Continuation) ->
     }
     let res = Scheme::lambda(Lambda {
         binder: Formals::from_object(formals.clone())?,
-        body: expr.clone(),
+        body: Expression(expr.clone()),
         environment: env.clone(),
     });
     Ok(c.pass_value(res))
