@@ -37,7 +37,8 @@ pub enum Binding {
 pub type Builtin = fn(Vec<Scheme>, Environment) -> Result<Scheme, Error>;
 
 // pub?
-pub type BuiltinSyntax = Builtin;
+pub type BuiltinSyntax = fn(Vec<Scheme>, Environment, Continuation) ->
+    Result<Either<Task, Scheme>, Error>;
 
 // pub?
 #[derive(Debug, Clone, PartialEq)]
@@ -65,13 +66,18 @@ enum ContinuationData {
         environment: Environment,
         next_continuation: Continuation,
     },
+    // TODO: Only allow evaluation tasks in this continuation
+    IfThenElse {
+        if_true: Task,
+        if_false: Task,
+    },
     End,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Task(TaskEnum);
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum TaskEnum {
     Eval {
         expression: Scheme,
@@ -91,7 +97,13 @@ impl Continuation {
         Continuation(Rc::new(data))
     }
 
-    fn pass_value(self, value: Scheme) -> Either<Task, Scheme> {
+    pub fn if_then_else(if_true: Task, if_false: Task) -> Continuation {
+        Continuation::from_data(ContinuationData::IfThenElse {
+            if_true, if_false
+        })
+    }
+
+    pub fn pass_value(self, value: Scheme) -> Either<Task, Scheme> {
         match *self.0 {
             ContinuationData::Application {ref values, ref expressions,
                 ref environment, ref next_continuation} => {
@@ -116,6 +128,13 @@ impl Continuation {
                             new_values[1..].to_vec(), environment.clone(),
                             next_continuation.clone()))
                     },
+                }
+            },
+            ContinuationData::IfThenElse {ref if_true, ref if_false} => {
+                if value.truey() {
+                    Left(if_true.clone())
+                } else {
+                    Left(if_false.clone())
                 }
             },
             ContinuationData::End => Right(value),
@@ -173,9 +192,8 @@ impl Task {
                     if let Some(x) = operator.as_symbol() {
                         if let Some(Binding::Syntax(form)) =
                             env.lookup_binding(x) {
-                            return Ok(cont.pass_value(
-                                form(operands_linked.into_vec()?,
-                                env.clone())?));
+                            return Ok(form(operands_linked.into_vec()?,
+                                env.clone(), cont)?);
                         }
                     }
                     // Procedure call
@@ -211,34 +229,6 @@ impl Scheme {
         let continuation = Continuation::from_data(ContinuationData::End);
         let task = Task::eval(self.clone(), env.clone(), continuation);
         task.complete()
-    }
-
-    #[allow(dead_code)]
-    pub fn old_eval(&self, env: &Environment) -> Result<Scheme, Error> {
-        if let Some(s) = self.as_symbol() {
-            if let Some(res) = env.lookup(&s) {
-                Ok(res.clone())
-            } else {
-                Err(Error)
-            }
-        } else if let Some((operator, operands_linked)) = self.as_pair() {
-            if let Some(x) = operator.as_symbol() {
-                if let Some(Binding::Syntax(form)) = env.lookup_binding(x) {
-                    return form(operands_linked.into_vec()?, env.clone())
-                }
-            }
-            // Procedure call
-            let operands = operands_linked.into_vec()?;
-            let procedure = operator.eval(env)?;
-            let arguments = operands.into_iter()
-                                    .map(|arg| arg.eval(env))
-                                    .collect::<Result<Vec<_>, _>>()?;
-            procedure.apply(arguments, env)
-        } else if self.is_literal() {
-            Ok(self.clone())
-        } else {
-            Err(Error)
-        }
     }
 
     fn apply(&self, args: Vec<Scheme>, env: &Environment) -> Result<Scheme,
@@ -297,8 +287,9 @@ impl Environment {
     }
 }
 
-pub fn lambda(operands: Vec<Scheme>, env: Environment) -> Result<Scheme, Error>
-{
+pub fn lambda(operands: Vec<Scheme>, env: Environment, c: Continuation) ->
+    Result<Either<Task, Scheme>, Error> {
+
     let operands_linked = Scheme::list(operands);
     let (formals, body) = operands_linked.as_pair().ok_or(Error)?;
     //let binder = formals.as_symbol().ok_or(Error)?;
@@ -306,11 +297,12 @@ pub fn lambda(operands: Vec<Scheme>, env: Environment) -> Result<Scheme, Error>
     if !null.is_null() {
         return Err(Error);
     }
-    Ok(Scheme::lambda(Lambda {
+    let res = Scheme::lambda(Lambda {
         binder: Formals::from_object(formals.clone())?,
         body: expr.clone(),
         environment: env.clone(),
-    }))
+    });
+    Ok(c.pass_value(res))
 }
 
 impl Formals {

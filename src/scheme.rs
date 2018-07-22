@@ -345,4 +345,14 @@ mod test {
         comparison("'(a . b)", Scheme::cons(Scheme::symbol("a"),
             Scheme::symbol("b")));
     }
+
+    #[test]
+    fn test_product() {
+        comparison("(* 2 2)", Scheme::int(4));
+    }
+
+    #[test]
+    fn test_if() {
+        comparison("(if (= (* 2 2) 4) 3 4)", Scheme::int(3));
+    }
 }

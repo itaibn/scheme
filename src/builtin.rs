@@ -2,18 +2,24 @@
 use std::cmp;
 use std::collections::HashMap;
 
-use runtime;
-use scheme::{self, Scheme, Environment, Error};
+use either::{Either, Left, Right};
 
-fn quote(operands: Vec<Scheme>, _: Environment) -> Result<Scheme, Error> {
+use runtime::{self, Continuation, Environment, Task};
+use scheme::{self, Scheme, Error};
+
+fn quote(operands: Vec<Scheme>, _: Environment, c: Continuation) ->
+    Result<Either<Task, Scheme>, Error> {
+
     if operands.len() != 1 {
         Err(Error)
     } else {
-        Ok(operands[0].clone())
+        Ok(c.pass_value(operands[0].clone()))
     }
 }
 
-fn syntax_if(operands: Vec<Scheme>, env: Environment) -> Result<Scheme, Error> {
+fn syntax_if(operands: Vec<Scheme>, env: Environment, c: Continuation) ->
+    Result<Either<Task, Scheme>, Error> {
+
     if operands.len() != 3 {
         Err(Error)
     } else {
@@ -21,13 +27,13 @@ fn syntax_if(operands: Vec<Scheme>, env: Environment) -> Result<Scheme, Error> {
         let cond = iter.next().unwrap();
         let if_true = iter.next().unwrap();
         let if_false = iter.next().unwrap();
-        assert_eq!(iter.next(), None);
 
-        if cond.eval(&env)?.truey() {
-            if_true.eval(&env)
-        } else {
-            if_false.eval(&env)
-        }
+        let if_true_task = Task::eval(if_true, env.clone(), c.clone());
+        let if_false_task = Task::eval(if_false, env.clone(), c);
+        let new_continuation = Continuation::if_then_else(if_true_task,
+            if_false_task);
+
+        Ok(Left(Task::eval(cond, env, new_continuation)))
     }
 }
 
@@ -191,7 +197,7 @@ fn times(args: Vec<Scheme>, _: Environment) -> Result<Scheme, Error> {
     let mut total = 1;
     for arg in args {
         if let Some(n) = arg.as_int() {
-            total -= n;
+            total *= n;
         } else {
             return Err(Error);
         }
