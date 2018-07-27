@@ -37,27 +37,6 @@ pub enum Binding {
     Syntax(BuiltinSyntax),
 }
 
-// pub?
-pub type Builtin = fn(Vec<Scheme>, Environment) -> Result<Scheme, Error>;
-
-// pub?
-pub type BuiltinSyntax = fn(Vec<Expression>, Environment, Continuation) ->
-    Result<Either<Task, Scheme>, Error>;
-
-// pub?
-#[derive(Debug, Clone, PartialEq)]
-pub struct Lambda {
-    binder: Formals,
-    body: Expression,
-    environment: Environment,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-struct Formals {
-    head_vars: Vec<String>,
-    tail_var: Option<String>,
-}
-
 #[derive(Debug, Clone)]
 pub struct Continuation(Rc<ContinuationData>);
 
@@ -82,7 +61,7 @@ enum ContinuationData {
 pub struct Task(TaskEnum);
 
 #[derive(Clone, Debug)]
-pub enum TaskEnum {
+enum TaskEnum {
     Eval {
         expression: Expression,
         environment: Environment,
@@ -94,6 +73,37 @@ pub enum TaskEnum {
         environment: Environment,
         continuation: Continuation,
     },
+    Done(Scheme),
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct Procedure(ProcEnum);
+
+#[derive(Clone, Debug, PartialEq)]
+enum ProcEnum {
+    Builtin(Builtin),
+    Lambda(Lambda),
+}
+
+// pub?
+pub type Builtin = fn(Vec<Scheme>, Environment) -> Result<Scheme, Error>;
+
+// pub?
+pub type BuiltinSyntax = fn(Vec<Expression>, Environment, Continuation) ->
+    Result<Task, Error>;
+
+// pub?
+#[derive(Debug, Clone, PartialEq)]
+pub struct Lambda {
+    binder: Formals,
+    body: Expression,
+    environment: Environment,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+struct Formals {
+    head_vars: Vec<String>,
+    tail_var: Option<String>,
 }
 
 impl Continuation {
@@ -107,7 +117,7 @@ impl Continuation {
         })
     }
 
-    pub fn pass_value(self, value: Scheme) -> Either<Task, Scheme> {
+    pub fn pass_value(self, value: Scheme) -> Task {
         match *self.0 {
             ContinuationData::Application {ref values, ref expressions,
                 ref environment, ref next_continuation} => {
@@ -124,25 +134,31 @@ impl Continuation {
                                 environment: environment.clone(),
                                 next_continuation: next_continuation.clone(),
                             });
-                        Left(Task::eval(expr, environment.clone(),
-                            new_continuation))
+                        Task::eval(expr, environment.clone(),
+                            new_continuation)
                     },
                     None => {
-                        Left(Task::apply(new_values[0].clone(),
+                        Task::apply(new_values[0].clone(),
                             new_values[1..].to_vec(), environment.clone(),
-                            next_continuation.clone()))
+                            next_continuation.clone())
                     },
                 }
             },
             ContinuationData::IfThenElse {ref if_true, ref if_false} => {
                 if value.truey() {
-                    Left(if_true.clone())
+                    if_true.clone()
                 } else {
-                    Left(if_false.clone())
+                    if_false.clone()
                 }
             },
-            ContinuationData::End => Right(value),
+            ContinuationData::End => Task::done(value),
         }
+    }
+}
+
+impl Default for Continuation {
+    fn default() -> Continuation {
+        Continuation::from_data(ContinuationData::End)
     }
 }
 
@@ -172,6 +188,10 @@ impl Task {
         })
     }
 
+    pub fn done(val: Scheme) -> Task {
+        Task(TaskEnum::Done(val))
+    }
+
     pub fn complete(self) -> Result<Scheme, Error> {
         let mut cur_task = self;
         loop {
@@ -189,7 +209,7 @@ impl Task {
 
                 if let Some(s) = expr.as_symbol() {
                     if let Some(res) = env.lookup(&s) {
-                        Ok(cont.pass_value(res.clone()))
+                        Ok(Left(cont.pass_value(res.clone())))
                     } else {
                         Err(Error)
                     }
@@ -203,7 +223,7 @@ impl Task {
                                                .into_iter()
                                                .map(|val| Expression(val))
                                                .collect();
-                            return form(operands, env.clone(), cont);
+                            return Ok(Left(form(operands, env.clone(), cont)?));
                         }
                     }
                     // Procedure call
@@ -220,23 +240,28 @@ impl Task {
                     Ok(Left(Task::eval(Expression(operator.clone()), env,
                         new_continuation)))
                 } else if expr.0.is_literal() {
-                    Ok(cont.pass_value(expr.0.clone()))
+                    Ok(Left(cont.pass_value(expr.0.clone())))
                 } else {
                     Err(Error)
                 }
             },
             TaskEnum::Apply {procedure, arguments, environment, continuation} =>
             {
-                let applied = procedure.apply(arguments, &environment)?;
-                Ok(continuation.pass_value(applied))
+                if let Some(procc) = procedure.as_procedure() {
+                    Ok(Left(procc.apply(arguments, environment,
+                        continuation)?))
+                } else {
+                    Err(Error)
+                }
             }
+            TaskEnum::Done(val) => Ok(Right(val)),
         }
     }
 }
 
 impl Scheme {
     pub fn eval(&self, env: &Environment) -> Result<Scheme, Error> {
-        let continuation = Continuation::from_data(ContinuationData::End);
+        let continuation = Continuation::default();
         let task = Task::eval(Expression(self.clone()), env.clone(),
             continuation);
         task.complete()
@@ -245,14 +270,36 @@ impl Scheme {
     fn apply(&self, args: Vec<Scheme>, env: &Environment) -> Result<Scheme,
         Error> {
 
-        if let Some(builtin) = self.as_builtin() {
-            builtin(args, env.clone())
-        } else if let Some(lambda) = self.as_lambda() {
-            let new_env = lambda.environment.make_child();
-            lambda.binder.match_with_args(args, &new_env)?;
-            lambda.body.0.eval(&new_env)
+        if let Some(procc) = self.as_procedure() {
+            procc.apply(args, env.clone(), Continuation::default())?.complete()
         } else {
             Err(Error)
+        }
+    }
+}
+
+impl Procedure {
+    pub fn builtin(bltin: Builtin) -> Procedure {
+        Procedure(ProcEnum::Builtin(bltin))
+    }
+
+    fn lambda(lam: Lambda) -> Procedure {
+        Procedure(ProcEnum::Lambda(lam))
+    }
+
+    fn apply(self, args: Vec<Scheme>, env: Environment, ctx: Continuation) ->
+        Result<Task, Error> {
+
+        match self.0 {
+            ProcEnum::Builtin(builtin) => {
+                let res = builtin(args, env)?;
+                Ok(ctx.pass_value(res))
+            },
+            ProcEnum::Lambda(lamb) => {
+                let new_env = lamb.environment.make_child();
+                lamb.binder.match_with_args(args, &new_env)?;
+                Ok(Task::eval(lamb.body, new_env, ctx))
+            },
         }
     }
 }
@@ -314,7 +361,7 @@ impl Environment {
 }
 
 pub fn lambda(operands: Vec<Expression>, env: Environment, c: Continuation) ->
-    Result<Either<Task, Scheme>, Error> {
+    Result<Task, Error> {
 
     let operands_linked = Scheme::list(operands.into_iter().map(|expr| expr.0));
     let (formals, body) = operands_linked.as_pair().ok_or(Error)?;
@@ -323,12 +370,12 @@ pub fn lambda(operands: Vec<Expression>, env: Environment, c: Continuation) ->
     if !null.is_null() {
         return Err(Error);
     }
-    let res = Scheme::lambda(Lambda {
+    let procc = Procedure::lambda(Lambda {
         binder: Formals::from_object(formals.clone())?,
         body: Expression(expr.clone()),
         environment: env.clone(),
     });
-    Ok(c.pass_value(res))
+    Ok(c.pass_value(Scheme::procedure(procc)))
 }
 
 impl Formals {

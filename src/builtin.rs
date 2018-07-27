@@ -8,7 +8,7 @@ use runtime::{self, Continuation, Environment, Expression, Task};
 use scheme::{self, Scheme, Error};
 
 fn quote(operands: Vec<Expression>, _: Environment, c: Continuation) ->
-    Result<Either<Task, Scheme>, Error> {
+    Result<Task, Error> {
 
     if operands.len() != 1 {
         Err(Error)
@@ -18,7 +18,7 @@ fn quote(operands: Vec<Expression>, _: Environment, c: Continuation) ->
 }
 
 fn syntax_if(operands: Vec<Expression>, env: Environment, c: Continuation) ->
-    Result<Either<Task, Scheme>, Error> {
+    Result<Task, Error> {
 
     if operands.len() != 3 {
         Err(Error)
@@ -33,7 +33,7 @@ fn syntax_if(operands: Vec<Expression>, env: Environment, c: Continuation) ->
         let new_continuation = Continuation::if_then_else(if_true_task,
             if_false_task);
 
-        Ok(Left(Task::eval(cond, env, new_continuation)))
+        Ok(Task::eval(cond, env, new_continuation))
     }
 }
 
@@ -465,7 +465,9 @@ pub fn initial_environment() -> Environment {
 
     {
         let mut add_fn = |name: &'static str, func| hashmap.insert(
-            name.to_string(), scheme::Binding::Variable(Scheme::builtin(func)));
+            name.to_string(), scheme::Binding::Variable(
+                                Scheme::procedure(
+                                    runtime::Procedure::builtin(func))));
             
         add_fn("integer?", is_integer);
         // Temporary: Integers are the only numerical types, so all other type

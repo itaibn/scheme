@@ -7,7 +7,7 @@ use std::iter::DoubleEndedIterator;
 use std::rc::Rc;
 
 // Temp
-pub use runtime::{Binding, Builtin, Environment, Lambda};
+pub use runtime::{Binding, Environment, Procedure};
 
 // TODO: Rethink derive(PartialEq)
 #[derive(Clone, Debug, PartialEq)]
@@ -16,8 +16,7 @@ enum SchemeData {
     Character(char),
     Null,
     Cons(Scheme, Scheme),
-    Builtin(Builtin),
-    Lambda(Lambda),
+    Procedure(Procedure),
     Symbol(String),
     Bytevector(Vec<u8>),
     Int(i64),
@@ -80,32 +79,16 @@ impl Scheme {
         }
     }
 
-    pub(crate) fn builtin(func: Builtin) -> Scheme {
-        Scheme::from_data(SchemeData::Builtin(func))
+    pub(crate) fn procedure(procc: Procedure) -> Scheme {
+        Scheme::from_data(SchemeData::Procedure(procc))
     }
 
-    pub(crate) fn as_builtin(&self) -> Option<Builtin> {
-        if let SchemeData::Builtin(func) = *self.0 {
-            Some(func)
+    pub(crate) fn as_procedure(&self) -> Option<Procedure> {
+        if let SchemeData::Procedure(ref procc) = *self.0 {
+            Some(procc.clone())
         } else {
             None
         }
-    }
-
-    pub(crate) fn lambda(lam: Lambda) -> Scheme {
-        Scheme::from_data(SchemeData::Lambda(lam))
-    }
-
-    pub(crate) fn as_lambda(&self) -> Option<Lambda> {
-        if let SchemeData::Lambda(ref lam) = *self.0 {
-            Some(lam.clone())
-        } else {
-            None
-        }
-    }
-
-    fn is_procedure(&self) -> bool {
-        self.as_builtin().is_some() || self.as_lambda().is_some()
     }
 
     pub fn symbol<S:ToString>(s: S) -> Scheme {
@@ -261,10 +244,9 @@ impl fmt::Display for Scheme {
                     if i < bvec.len()-1 {' '} else {')'})?;
             }
             Ok(())
-        } else if let Some(bltin) = self.as_builtin() {
-            write!(f, "<builtin at 0x{:x}>", bltin as usize)
-        } else if let Some(_) = self.as_lambda() {
-            write!(f, "<closure>")
+        } else if let Some(procc) = self.as_procedure() {
+            //write!(f, "<builtin at 0x{:x}>", bltin as usize)
+            write!(f, "{:?}", procc)
         } else {
             write!(f, "<unrecognized data type>")
         }
