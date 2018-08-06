@@ -81,14 +81,15 @@ pub struct Procedure(ProcEnum);
 
 #[derive(Clone, Debug, PartialEq)]
 enum ProcEnum {
-    Builtin(Builtin),
+    Builtin(Builtin), // Deprecate this?
+    SimpleBuiltin(SimpleBuiltin),
     Lambda(Lambda),
 }
 
-// pub?
 pub type Builtin = fn(Vec<Scheme>, Environment) -> Result<Scheme, Error>;
 
-// pub?
+pub type SimpleBuiltin = fn(Vec<Scheme>) -> Result<Scheme, Error>;
+
 pub type BuiltinSyntax = fn(Vec<Expression>, Environment, Continuation) ->
     Result<Task, Error>;
 
@@ -283,6 +284,10 @@ impl Procedure {
         Procedure(ProcEnum::Builtin(bltin))
     }
 
+    pub fn simple_builtin(builtin: SimpleBuiltin) -> Procedure {
+        Procedure(ProcEnum::SimpleBuiltin(builtin))
+    }
+
     fn lambda(lam: Lambda) -> Procedure {
         Procedure(ProcEnum::Lambda(lam))
     }
@@ -294,6 +299,9 @@ impl Procedure {
             ProcEnum::Builtin(builtin) => {
                 let res = builtin(args, env)?;
                 Ok(ctx.pass_value(res))
+            },
+            ProcEnum::SimpleBuiltin(builtin) => {
+                Ok(ctx.pass_value(builtin(args)?))
             },
             ProcEnum::Lambda(lamb) => {
                 let new_env = lamb.environment.make_child();

@@ -4,7 +4,7 @@ use std::collections::HashMap;
 
 use either::{Either, Left, Right};
 
-use runtime::{self, Builtin, BuiltinSyntax, Continuation, Environment,
+use runtime::{self, SimpleBuiltin, BuiltinSyntax, Continuation, Environment,
     Expression, Task};
 use scheme::{self, Scheme, Error};
 
@@ -41,7 +41,7 @@ fn syntax_if(operands: Vec<Expression>, env: Environment, c: Continuation) ->
 // A predicate which is false for any argument, and gives an error when given
 // zero or more than one arguments. Currently a few predicates alias to this
 // since I don't support the full set of Scheme types.
-fn false_predicate(args: Vec<Scheme>, _: Environment) -> Result<Scheme, Error> {
+fn false_predicate(args: Vec<Scheme>) -> Result<Scheme, Error> {
     if args.len() == 1 {
         Ok(Scheme::boolean(false))
     } else {
@@ -51,7 +51,7 @@ fn false_predicate(args: Vec<Scheme>, _: Environment) -> Result<Scheme, Error> {
 
 // Temporary: Integers are the only numerical types, so all other type
 // predicates are aliases of integer?
-fn is_integer(args: Vec<Scheme>, _: Environment) -> Result<Scheme, Error> {
+fn is_integer(args: Vec<Scheme>) -> Result<Scheme, Error> {
     if args.len() == 1 {
         Ok(Scheme::boolean(args[0].as_int().is_some()))
     } else {
@@ -85,62 +85,62 @@ fn comparison<F>(args: Vec<Scheme>, cmp: F) -> Result<Scheme, Error>
     Ok(Scheme::boolean(condition))
 }
 
-fn num_eq(args: Vec<Scheme>, _: Environment) -> Result<Scheme, Error> {
+fn num_eq(args: Vec<Scheme>) -> Result<Scheme, Error> {
     comparison(args, |n, m| n == m)
 }
 
-fn less(args: Vec<Scheme>,  _: Environment) -> Result<Scheme, Error> {
+fn less(args: Vec<Scheme>) -> Result<Scheme, Error> {
     comparison(args, |n, m| n < m)
 }
 
-fn greater(args: Vec<Scheme>, _: Environment) -> Result<Scheme, Error> {
+fn greater(args: Vec<Scheme>) -> Result<Scheme, Error> {
     comparison(args, |n, m| n > m)
 }
 
-fn less_equal(args: Vec<Scheme>, _: Environment) -> Result<Scheme, Error> {
+fn less_equal(args: Vec<Scheme>) -> Result<Scheme, Error> {
     comparison(args, |n, m| n <= m)
 }
 
-fn greater_equal(args: Vec<Scheme>, _: Environment) -> Result<Scheme, Error> {
+fn greater_equal(args: Vec<Scheme>) -> Result<Scheme, Error> {
     comparison(args, |n, m| n >= m)
 }
 
-fn is_zero(args: Vec<Scheme>, _: Environment) -> Result<Scheme, Error> {
+fn is_zero(args: Vec<Scheme>) -> Result<Scheme, Error> {
     if args.len() != 1 || args[0].as_int().is_none() {
         return Err(Error);
     }
     Ok(Scheme::boolean(args[0].as_int() == Some(0)))
 }
 
-fn is_positive(args: Vec<Scheme>,  _: Environment) -> Result<Scheme, Error> {
+fn is_positive(args: Vec<Scheme>) -> Result<Scheme, Error> {
     if args.len() != 1 || args[0].as_int().is_none() {
         return Err(Error);
     }
     Ok(Scheme::boolean(args[0].as_int().unwrap() > 0))
 }
 
-fn is_negative(args: Vec<Scheme>, _: Environment) -> Result<Scheme, Error> {
+fn is_negative(args: Vec<Scheme>) -> Result<Scheme, Error> {
     if args.len() != 1 || args[0].as_int().is_none() {
         return Err(Error);
     }
     Ok(Scheme::boolean(args[0].as_int().unwrap() < 0))
 }
 
-fn is_odd(args: Vec<Scheme>, _: Environment) -> Result<Scheme, Error> {
+fn is_odd(args: Vec<Scheme>) -> Result<Scheme, Error> {
     if args.len() != 1 || args[0].as_int().is_none() {
         return Err(Error);
     }
     Ok(Scheme::boolean(args[0].as_int().unwrap() % 2 == 1))
 }
 
-fn is_even(args: Vec<Scheme>, _: Environment) -> Result<Scheme, Error> {
+fn is_even(args: Vec<Scheme>) -> Result<Scheme, Error> {
     if args.len() != 1 || args[0].as_int().is_none() {
         return Err(Error);
     }
     Ok(Scheme::boolean(args[0].as_int().unwrap() % 2 == 0))
 }
 
-fn max(args: Vec<Scheme>, _: Environment) -> Result<Scheme, Error> {
+fn max(args: Vec<Scheme>) -> Result<Scheme, Error> {
     if args.len() <= 1 {
         return Err(Error);
     }
@@ -161,7 +161,7 @@ fn max(args: Vec<Scheme>, _: Environment) -> Result<Scheme, Error> {
     Ok(Scheme::int(max))
 }
 
-fn min(args: Vec<Scheme>, _: Environment) -> Result<Scheme, Error> {
+fn min(args: Vec<Scheme>) -> Result<Scheme, Error> {
     if args.len() <= 1 {
         return Err(Error);
     }
@@ -182,7 +182,7 @@ fn min(args: Vec<Scheme>, _: Environment) -> Result<Scheme, Error> {
     Ok(Scheme::int(min))
 }
 
-fn sum(args: Vec<Scheme>, _: Environment) -> Result<Scheme, Error> {
+fn sum(args: Vec<Scheme>) -> Result<Scheme, Error> {
     let mut total = 0;
     for arg in args {
         if let Some(n) = arg.as_int() {
@@ -194,7 +194,7 @@ fn sum(args: Vec<Scheme>, _: Environment) -> Result<Scheme, Error> {
     Ok(Scheme::int(total))
 }
 
-fn times(args: Vec<Scheme>, _: Environment) -> Result<Scheme, Error> {
+fn times(args: Vec<Scheme>) -> Result<Scheme, Error> {
     let mut total = 1;
     for arg in args {
         if let Some(n) = arg.as_int() {
@@ -206,7 +206,7 @@ fn times(args: Vec<Scheme>, _: Environment) -> Result<Scheme, Error> {
     Ok(Scheme::int(total))
 }
 
-fn minus(args: Vec<Scheme>, _: Environment) -> Result<Scheme, Error> {
+fn minus(args: Vec<Scheme>) -> Result<Scheme, Error> {
     if !args.is_empty() {
         let fst_num: i64;
         if let Some(n) = args[0].as_int() {
@@ -236,7 +236,7 @@ fn minus(args: Vec<Scheme>, _: Environment) -> Result<Scheme, Error> {
 
 // Section 6.3: Booleans
 
-fn not(args: Vec<Scheme>, _: Environment) -> Result<Scheme, Error> {
+fn not(args: Vec<Scheme>) -> Result<Scheme, Error> {
     if args.len() == 1 {
         Ok(Scheme::boolean(!args[0].truey()))
     } else {
@@ -244,7 +244,7 @@ fn not(args: Vec<Scheme>, _: Environment) -> Result<Scheme, Error> {
     }
 }
 
-fn is_boolean(args: Vec<Scheme>, _: Environment) -> Result<Scheme, Error> {
+fn is_boolean(args: Vec<Scheme>) -> Result<Scheme, Error> {
     if args.len() == 1 {
         Ok(Scheme::boolean(args[0].as_boolean().is_some()))
     } else {
@@ -252,7 +252,7 @@ fn is_boolean(args: Vec<Scheme>, _: Environment) -> Result<Scheme, Error> {
     }
 }
 
-fn boolean_equal(args: Vec<Scheme>, _: Environment) -> Result<Scheme, Error> {
+fn boolean_equal(args: Vec<Scheme>) -> Result<Scheme, Error> {
     if args.len() < 2 {
         return Err(Error);
     }
@@ -267,7 +267,7 @@ fn boolean_equal(args: Vec<Scheme>, _: Environment) -> Result<Scheme, Error> {
 
 // Section 6.4: Pairs and lists
 
-fn is_pair(args: Vec<Scheme>, _: Environment) -> Result<Scheme, Error> {
+fn is_pair(args: Vec<Scheme>) -> Result<Scheme, Error> {
     if args.len() == 1 {
         Ok(Scheme::boolean(args[0].as_pair().is_some()))
     } else {
@@ -275,7 +275,7 @@ fn is_pair(args: Vec<Scheme>, _: Environment) -> Result<Scheme, Error> {
     }
 }
 
-fn cons(args: Vec<Scheme>, _: Environment) -> Result<Scheme, Error> {
+fn cons(args: Vec<Scheme>) -> Result<Scheme, Error> {
     if args.len() == 2 {
         Ok(Scheme::cons(args[0].clone(), args[1].clone()))
     } else {
@@ -283,7 +283,7 @@ fn cons(args: Vec<Scheme>, _: Environment) -> Result<Scheme, Error> {
     }
 }
 
-fn car(args: Vec<Scheme>, _: Environment) -> Result<Scheme, Error> {
+fn car(args: Vec<Scheme>) -> Result<Scheme, Error> {
     if args.len() == 1 {
         let arg = args[0].clone();
         if let Some((a, _)) = arg.as_pair() {
@@ -296,7 +296,7 @@ fn car(args: Vec<Scheme>, _: Environment) -> Result<Scheme, Error> {
     }
 }
 
-fn cdr(args: Vec<Scheme>, _: Environment) -> Result<Scheme, Error> {
+fn cdr(args: Vec<Scheme>) -> Result<Scheme, Error> {
     if args.len() == 1 {
         if let Some((_, b)) = args[0].as_pair() {
             Ok(b.clone())
@@ -311,7 +311,7 @@ fn cdr(args: Vec<Scheme>, _: Environment) -> Result<Scheme, Error> {
 // set-car! and set-cdr! unimplemented since there's mutable pair support.
 // caar...cddddr unimplemented because they're tedious
 
-fn is_null(args: Vec<Scheme>, _: Environment) -> Result<Scheme, Error> {
+fn is_null(args: Vec<Scheme>) -> Result<Scheme, Error> {
     if args.len() == 1 {
         Ok(Scheme::boolean(args[0].is_null()))
     } else {
@@ -319,14 +319,14 @@ fn is_null(args: Vec<Scheme>, _: Environment) -> Result<Scheme, Error> {
     }
 }
 
-fn is_list(args: Vec<Scheme>, _: Environment) -> Result<Scheme, Error> {
+fn is_list(args: Vec<Scheme>) -> Result<Scheme, Error> {
     if args.len() != 1 {
         return Err(Error);
     }
     Ok(Scheme::boolean(args[0].into_vec().is_ok()))
 }
 
-fn make_list(args: Vec<Scheme>, _: Environment) -> Result<Scheme, Error> {
+fn make_list(args: Vec<Scheme>) -> Result<Scheme, Error> {
     if args.len() == 0 || args.len() > 2 {
         return Err(Error);
     }
@@ -347,11 +347,11 @@ fn make_list(args: Vec<Scheme>, _: Environment) -> Result<Scheme, Error> {
     Ok(new_list)
 }
 
-fn list(args: Vec<Scheme>, _: Environment) -> Result<Scheme, Error> {
+fn list(args: Vec<Scheme>) -> Result<Scheme, Error> {
     Ok(Scheme::list(args))
 }
 
-fn length(args: Vec<Scheme>, _: Environment) -> Result<Scheme, Error> {
+fn length(args: Vec<Scheme>) -> Result<Scheme, Error> {
     if args.len() == 1 {
         Ok(Scheme::int(args[0].into_vec()?.len() as i64))
     } else {
@@ -359,7 +359,7 @@ fn length(args: Vec<Scheme>, _: Environment) -> Result<Scheme, Error> {
     }
 }
 
-fn append(mut args: Vec<Scheme>, _: Environment) -> Result<Scheme, Error> {
+fn append(mut args: Vec<Scheme>) -> Result<Scheme, Error> {
     let mut tail = args.pop().unwrap_or_else(|| Scheme::null());
     for list in args.iter().rev() {
         for item in list.into_vec()?.iter().rev() {
@@ -369,7 +369,7 @@ fn append(mut args: Vec<Scheme>, _: Environment) -> Result<Scheme, Error> {
     Ok(tail)
 }
 
-fn reverse(args: Vec<Scheme>, _: Environment) -> Result<Scheme, Error> {
+fn reverse(args: Vec<Scheme>) -> Result<Scheme, Error> {
     if args.len() != 1 {
         return Err(Error);
     }
@@ -390,7 +390,7 @@ fn reverse(args: Vec<Scheme>, _: Environment) -> Result<Scheme, Error> {
     }
 }
 
-fn list_tail(args: Vec<Scheme>, _: Environment) -> Result<Scheme, Error> {
+fn list_tail(args: Vec<Scheme>) -> Result<Scheme, Error> {
     if args.len() != 2 {
         return Err(Error);
     }
@@ -412,7 +412,7 @@ fn list_tail(args: Vec<Scheme>, _: Environment) -> Result<Scheme, Error> {
     Ok(list)
 }
 
-fn list_ref(args: Vec<Scheme>, _: Environment) -> Result<Scheme, Error> {
+fn list_ref(args: Vec<Scheme>) -> Result<Scheme, Error> {
     if args.len() != 2 {
         return Err(Error);
     }
@@ -440,7 +440,7 @@ fn list_ref(args: Vec<Scheme>, _: Environment) -> Result<Scheme, Error> {
 
 // Omitted: list-set! memq memv member assq assv assoc list-copy
 
-fn is_symbol(args: Vec<Scheme>, _: Environment) -> Result<Scheme, Error> {
+fn is_symbol(args: Vec<Scheme>) -> Result<Scheme, Error> {
     if args.len() == 1 {
         Ok(Scheme::boolean(args[0].as_symbol().is_some()))
     } else {
@@ -448,7 +448,7 @@ fn is_symbol(args: Vec<Scheme>, _: Environment) -> Result<Scheme, Error> {
     }
 }
 
-fn symbol_to_string(args: Vec<Scheme>, _: Environment) -> Result<Scheme, Error>
+fn symbol_to_string(args: Vec<Scheme>) -> Result<Scheme, Error>
 {
     if args.len() != 1 {
         return Err(Error);
@@ -462,8 +462,8 @@ fn symbol_to_string(args: Vec<Scheme>, _: Environment) -> Result<Scheme, Error>
 }
 
 pub fn initial_environment() -> Environment {
-    fn simple(f: Builtin) -> scheme::Binding {
-        scheme::Binding::Variable(Scheme::procedure(runtime::Procedure::builtin(f)))
+    fn simple(f: SimpleBuiltin) -> scheme::Binding {
+        scheme::Binding::Variable(Scheme::procedure(runtime::Procedure::simple_builtin(f)))
     }
 
     fn syntax(f: BuiltinSyntax) -> scheme::Binding {
