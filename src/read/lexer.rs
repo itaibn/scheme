@@ -24,11 +24,14 @@ pub struct Lexer<'a>(&'a str);
 macro_rules! grammar {
     ($($key:ident -> $value:expr;)*) => {lazy_static! {
         static ref GRAMMAR: HashMap<&'static str, &'static str> = {
+        /*
             let mut grammar = HashMap::new();
             $(
                 grammar.insert(stringify!($key), $value);
             )*
             grammar
+        */
+            hashmap!($(stringify!($key) => $value),*)
         };
     }}
 }

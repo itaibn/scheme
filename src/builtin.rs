@@ -4,7 +4,8 @@ use std::collections::HashMap;
 
 use either::{Either, Left, Right};
 
-use runtime::{self, Continuation, Environment, Expression, Task};
+use runtime::{self, Builtin, BuiltinSyntax, Continuation, Environment,
+    Expression, Task};
 use scheme::{self, Scheme, Error};
 
 fn quote(operands: Vec<Expression>, _: Environment, c: Continuation) ->
@@ -431,7 +432,7 @@ fn list_ref(args: Vec<Scheme>, _: Environment) -> Result<Scheme, Error> {
         list = new_list;
     }
     if let Some((item, _)) = list.as_pair() {
-        Ok(item.clone())
+       Ok(item.clone())
     } else {
         Err(Error)
     }
@@ -461,6 +462,69 @@ fn symbol_to_string(args: Vec<Scheme>, _: Environment) -> Result<Scheme, Error>
 }
 
 pub fn initial_environment() -> Environment {
+    fn simple(f: Builtin) -> scheme::Binding {
+        scheme::Binding::Variable(Scheme::procedure(runtime::Procedure::builtin(f)))
+    }
+
+    fn syntax(f: BuiltinSyntax) -> scheme::Binding {
+        scheme::Binding::Syntax(f)
+    }
+
+    let hashmap = hashmap! {
+        "integer?".to_string() => simple(is_integer),
+        // Temporary: Integers are the only numerical types, so all other type
+        // predicates and some other numerical predicates are aliases of
+        // integer?
+        "number?".to_string() => simple(is_integer),
+        "complex?".to_string() => simple(is_integer),
+        "real?".to_string() => simple(is_integer),
+        "exact?".to_string() => simple(is_integer),
+        "inexact?".to_string() => simple(false_predicate),
+        "exact-integer?".to_string() => simple(is_integer),
+        "finite?".to_string() => simple(is_integer),
+        "infinite?".to_string() => simple(false_predicate),
+        "nan?".to_string() => simple(false_predicate),
+        "=".to_string() => simple(num_eq),
+        "<".to_string() => simple(less),
+        ">".to_string() => simple(greater),
+        "<=".to_string() => simple(less_equal),
+        ">=".to_string() => simple(greater_equal),
+        "zero?".to_string() => simple(is_zero),
+        "positive?".to_string() => simple(is_positive),
+        "negative?".to_string() => simple(is_negative),
+        "odd?".to_string() => simple(is_odd),
+        "even?".to_string() => simple(is_even),
+        "max".to_string() => simple(max),
+        "min".to_string() => simple(min),
+        // Rename
+        "sum".to_string() => simple(sum),
+        "*".to_string() => simple(times),
+        // Rename
+        "minus".to_string() => simple(minus),
+        "not".to_string() => simple(not),
+        "boolean?".to_string() => simple(is_boolean),
+        "boolean=?".to_string() => simple(boolean_equal),
+        "pair?".to_string() => simple(is_pair),
+        "cons".to_string() => simple(cons),
+        "car".to_string() => simple(car),
+        "cdr".to_string() => simple(cdr),
+        "null?".to_string() => simple(is_null),
+        "list?".to_string() => simple(is_list),
+        "make-list".to_string() => simple(make_list),
+        "list".to_string() => simple(list),
+        "length".to_string() => simple(length),
+        "append".to_string() => simple(append),
+        "reverse".to_string() => simple(reverse),
+        "list-tail".to_string() => simple(list_tail),
+        "list-ref".to_string() => simple(list_ref),
+        "symbol?".to_string() => simple(is_symbol),
+        "symbol->string".to_string() => simple(symbol_to_string),
+        "lambda".to_string() => syntax(runtime::lambda),
+        "quote".to_string() => syntax(quote),
+        "if".to_string() => syntax(syntax_if)
+    };
+
+/*
     let mut hashmap = HashMap::new();
 
     {
@@ -468,7 +532,6 @@ pub fn initial_environment() -> Environment {
             name.to_string(), scheme::Binding::Variable(
                                 Scheme::procedure(
                                     runtime::Procedure::builtin(func))));
-            
         add_fn("integer?", is_integer);
         // Temporary: Integers are the only numerical types, so all other type
         // predicates and some other numerical predicates are aliases of
@@ -524,6 +587,7 @@ pub fn initial_environment() -> Environment {
         scheme::Binding::Syntax(quote));
     hashmap.insert("if".to_string(),
         scheme::Binding::Syntax(syntax_if));
+*/
 
     Environment::from_hashmap(hashmap)
 }

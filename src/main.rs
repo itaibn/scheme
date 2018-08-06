@@ -2,6 +2,8 @@
 extern crate either;
 #[macro_use]
 extern crate lazy_static;
+#[macro_use]
+extern crate maplit;
 extern crate regex;
 
 mod builtin;

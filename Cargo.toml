@@ -7,4 +7,5 @@ authors = ["Itai Bar-Natan <itaibn3141@gmail.com>"]
 either = "1.5.0"
 #nom = {version = "3.2.0", features = ["regexp"]}
 lazy_static = "1.0.0"
+maplit = "1.0.1"
 regex = "0.2"
