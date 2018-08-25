@@ -461,9 +461,24 @@ fn symbol_to_string(args: Vec<Scheme>) -> Result<Scheme, Error>
     }
 }
 
+fn call_with_current_continuation(args: Vec<Scheme>, env: Environment, ctx:
+    Continuation) -> Result<Task, Error> {
+
+    if args.len() != 1 {
+        return Err(Error);
+    }
+    let cont_obj =
+        Scheme::procedure(runtime::Procedure::continuation(ctx.clone()));
+    Ok(Task::apply(args[0].clone(), vec![cont_obj], env, ctx))
+}
+
 pub fn initial_environment() -> Environment {
     fn simple(f: SimpleBuiltin) -> scheme::Binding {
         scheme::Binding::Variable(Scheme::procedure(runtime::Procedure::simple_builtin(f)))
+    }
+
+    fn complex(f: runtime::Builtin) -> scheme::Binding {
+        scheme::Binding::Variable(Scheme::procedure(runtime::Procedure::builtin(f)))
     }
 
     fn syntax(f: BuiltinSyntax) -> scheme::Binding {
@@ -519,75 +534,12 @@ pub fn initial_environment() -> Environment {
         "list-ref".to_string() => simple(list_ref),
         "symbol?".to_string() => simple(is_symbol),
         "symbol->string".to_string() => simple(symbol_to_string),
+        "call-with-current-continuation".to_string() =>
+            complex(call_with_current_continuation),
         "lambda".to_string() => syntax(runtime::lambda),
         "quote".to_string() => syntax(quote),
         "if".to_string() => syntax(syntax_if)
     };
-
-/*
-    let mut hashmap = HashMap::new();
-
-    {
-        let mut add_fn = |name: &'static str, func| hashmap.insert(
-            name.to_string(), scheme::Binding::Variable(
-                                Scheme::procedure(
-                                    runtime::Procedure::builtin(func))));
-        add_fn("integer?", is_integer);
-        // Temporary: Integers are the only numerical types, so all other type
-        // predicates and some other numerical predicates are aliases of
-        // integer?
-        add_fn("number?", is_integer);
-        add_fn("complex?", is_integer);
-        add_fn("real?", is_integer);
-        add_fn("exact?", is_integer);
-        add_fn("inexact?", false_predicate);
-        add_fn("exact-integer?", is_integer);
-        add_fn("finite?", is_integer);
-        add_fn("infinite?", false_predicate);
-        add_fn("nan?", false_predicate);
-        add_fn("=", num_eq);
-        add_fn("<", less);
-        add_fn(">", greater);
-        add_fn("<=", less_equal);
-        add_fn(">=", greater_equal);
-        add_fn("zero?", is_zero);
-        add_fn("positive?", is_positive);
-        add_fn("negative?", is_negative);
-        add_fn("odd?", is_odd);
-        add_fn("even?", is_even);
-        add_fn("max", max);
-        add_fn("min", min);
-        // Rename
-        add_fn("sum", sum);
-        add_fn("*", times);
-        // Rename
-        add_fn("minus", minus);
-        add_fn("not", not);
-        add_fn("boolean?", is_boolean);
-        add_fn("boolean=?", boolean_equal);
-        add_fn("pair?", is_pair);
-        add_fn("cons", cons);
-        add_fn("car", car);
-        add_fn("cdr", cdr);
-        add_fn("null?", is_null);
-        add_fn("list?", is_list);
-        add_fn("make-list", make_list);
-        add_fn("list", list);
-        add_fn("length", length);
-        add_fn("append", append);
-        add_fn("reverse", reverse);
-        add_fn("list-tail", list_tail);
-        add_fn("list-ref", list_ref);
-        add_fn("symbol?", is_symbol);
-        add_fn("symbol->string", symbol_to_string);
-    }
-    hashmap.insert("lambda".to_string(),
-        scheme::Binding::Syntax(runtime::lambda));
-    hashmap.insert("quote".to_string(),
-        scheme::Binding::Syntax(quote));
-    hashmap.insert("if".to_string(),
-        scheme::Binding::Syntax(syntax_if));
-*/
 
     Environment::from_hashmap(hashmap)
 }

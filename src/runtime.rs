@@ -37,10 +37,12 @@ pub enum Binding {
     Syntax(BuiltinSyntax),
 }
 
-#[derive(Debug, Clone)]
+// derive(PartialEq)?
+#[derive(Debug, Clone, PartialEq)]
 pub struct Continuation(Rc<ContinuationData>);
 
-#[derive(Debug)]
+// derive(PartialEq)?
+#[derive(Debug, PartialEq)]
 enum ContinuationData {
     // Left-to-right evaluation order for now
     Application {
@@ -57,10 +59,12 @@ enum ContinuationData {
     End,
 }
 
-#[derive(Clone, Debug)]
+// derive(PartialEq)?
+#[derive(Clone, Debug, PartialEq)]
 pub struct Task(TaskEnum);
 
-#[derive(Clone, Debug)]
+// derive(PartialEq)?
+#[derive(Clone, Debug, PartialEq)]
 enum TaskEnum {
     Eval {
         expression: Expression,
@@ -84,9 +88,11 @@ enum ProcEnum {
     Builtin(Builtin), // Deprecate this?
     SimpleBuiltin(SimpleBuiltin),
     Lambda(Lambda),
+    Continuation(Continuation),
 }
 
-pub type Builtin = fn(Vec<Scheme>, Environment) -> Result<Scheme, Error>;
+pub type Builtin = fn(Vec<Scheme>, Environment, Continuation) -> Result<Task,
+    Error>;
 
 pub type SimpleBuiltin = fn(Vec<Scheme>) -> Result<Scheme, Error>;
 
@@ -292,13 +298,16 @@ impl Procedure {
         Procedure(ProcEnum::Lambda(lam))
     }
 
+    pub fn continuation(cont: Continuation) -> Procedure {
+        Procedure(ProcEnum::Continuation(cont))
+    }
+
     fn apply(self, args: Vec<Scheme>, env: Environment, ctx: Continuation) ->
         Result<Task, Error> {
 
         match self.0 {
             ProcEnum::Builtin(builtin) => {
-                let res = builtin(args, env)?;
-                Ok(ctx.pass_value(res))
+                builtin(args, env, ctx)
             },
             ProcEnum::SimpleBuiltin(builtin) => {
                 Ok(ctx.pass_value(builtin(args)?))
@@ -307,6 +316,13 @@ impl Procedure {
                 let new_env = lamb.environment.make_child();
                 lamb.binder.match_with_args(args, &new_env)?;
                 Ok(Task::eval(lamb.body, new_env, ctx))
+            },
+            ProcEnum::Continuation(cont) => {
+                if args.len() == 1 {
+                    Ok(cont.pass_value(args[0].clone()))
+                } else {
+                    Err(Error)
+                }
             },
         }
     }

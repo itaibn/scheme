@@ -337,4 +337,10 @@ mod test {
     fn test_if() {
         comparison("(if (= (* 2 2) 4) 3 4)", Scheme::int(3));
     }
+
+    #[test]
+    fn test_call_cc() {
+        comparison("(call-with-current-continuation (lambda (cont) (* 3 (cont\
+            (* 5 6)))))", Scheme::int(30));
+    }
 }
