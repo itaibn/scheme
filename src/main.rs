@@ -1,5 +1,8 @@
 
 extern crate either;
+extern crate gc;
+#[macro_use]
+extern crate gc_derive;
 #[macro_use]
 extern crate lazy_static;
 #[macro_use]

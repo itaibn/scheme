@@ -1,19 +1,20 @@
 
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::rc::Rc;
+//use std::rc::Rc;
 
 use either::{Either, Left, Right};
+use gc::{Gc, GcCell};
 
 use scheme::{Error, Scheme};
 
 /// Wrapper type for unevaluated Scheme expressions.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Finalize, PartialEq, Trace)]
 pub struct Expression(pub Scheme);
 
 // Clone-by-reference environment
-#[derive(Clone, Debug, PartialEq)]
-pub struct Environment(Rc<RefCell<EnvironmentData>>);
+#[derive(Clone, Debug, Finalize, PartialEq, Trace)]
+pub struct Environment(Gc<GcCell<EnvironmentData>>);
 
 /*
 // TEMP: Make Environment in Debug easier to read but less informative
@@ -24,25 +25,26 @@ impl fmt::Debug for Environment {
 }
 */
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Finalize, PartialEq, Trace)]
 pub struct EnvironmentData {
     parent: Option<Environment>,
     local: HashMap<String, Binding>,
 }
 
+// TODO: Add a `None` option and remove extraneous Option in lookup type
 // pub?
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Finalize, PartialEq, Trace)]
 pub enum Binding {
     Variable(Scheme),
     Syntax(BuiltinSyntax),
 }
 
 // derive(PartialEq)?
-#[derive(Debug, Clone, PartialEq)]
-pub struct Continuation(Rc<ContinuationData>);
+#[derive(Debug, Clone, Finalize, PartialEq, Trace)]
+pub struct Continuation(Gc<ContinuationData>);
 
 // derive(PartialEq)?
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Finalize, PartialEq, Trace)]
 enum ContinuationData {
     // Left-to-right evaluation order for now
     Application {
@@ -60,11 +62,11 @@ enum ContinuationData {
 }
 
 // derive(PartialEq)?
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Finalize, PartialEq, Trace)]
 pub struct Task(TaskEnum);
 
 // derive(PartialEq)?
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Finalize, PartialEq, Trace)]
 enum TaskEnum {
     Eval {
         expression: Expression,
@@ -80,10 +82,10 @@ enum TaskEnum {
     Done(Scheme),
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Finalize, PartialEq, Trace)]
 pub struct Procedure(ProcEnum);
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Finalize, PartialEq, Trace)]
 enum ProcEnum {
     Builtin(Builtin), // Deprecate this?
     SimpleBuiltin(SimpleBuiltin),
@@ -100,14 +102,14 @@ pub type BuiltinSyntax = fn(Vec<Expression>, Environment, Continuation) ->
     Result<Task, Error>;
 
 // pub?
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Finalize, PartialEq, Trace)]
 pub struct Lambda {
     binder: Formals,
     body: Expression,
     environment: Environment,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Finalize, PartialEq, Trace)]
 struct Formals {
     head_vars: Vec<String>,
     tail_var: Option<String>,
@@ -115,7 +117,7 @@ struct Formals {
 
 impl Continuation {
     fn from_data(data: ContinuationData) -> Continuation {
-        Continuation(Rc::new(data))
+        Continuation(Gc::new(data))
     }
 
     pub fn if_then_else(if_true: Task, if_false: Task) -> Continuation {
@@ -124,7 +126,7 @@ impl Continuation {
         })
     }
 
-    pub fn pass_value(self, value: Scheme) -> Task {
+    pub fn pass_value(&self, value: Scheme) -> Task {
         match *self.0 {
             ContinuationData::Application {ref values, ref expressions,
                 ref environment, ref next_continuation} => {
@@ -210,9 +212,12 @@ impl Task {
     }
 
     pub fn step(self) -> Result<Either<Task, Scheme>, Error> {
+        // TODO: When Task/TaskEnum lose Finalize/Trace support, return to a
+        // pass-by-value implementation of below (remove will-be extraneous
+        // "ref" in patterns).
         match self.0 {
-            TaskEnum::Eval {expression: expr, environment: env, continuation:
-                cont} => {
+            TaskEnum::Eval {expression: ref expr, environment: ref env,
+                continuation: ref cont} => {
 
                 if let Some(s) = expr.as_symbol() {
                     if let Some(res) = env.lookup(&s) {
@@ -222,15 +227,16 @@ impl Task {
                     }
                 } else if let Some((operator, operands_linked)) =
                         expr.0.as_pair() {
-                    if let Some(x) = operator.as_symbol() {
+                    if let Some(symb) = operator.as_symbol() {
                         if let Some(Binding::Syntax(form)) =
-                            env.lookup_binding(x) {
+                            env.lookup_binding(symb) {
                             let operands =
                                 operands_linked.into_vec()?
                                                .into_iter()
                                                .map(|val| Expression(val))
                                                .collect();
-                            return Ok(Left(form(operands, env.clone(), cont)?));
+                            return Ok(Left(form(operands, env.clone(),
+                                cont.clone())?));
                         }
                     }
                     // Procedure call
@@ -242,26 +248,29 @@ impl Task {
                             values: Vec::new(),
                             expressions: expressions,
                             environment: env.clone(),
-                            next_continuation: cont,
+                            next_continuation: cont.clone(),
                         });
-                    Ok(Left(Task::eval(Expression(operator.clone()), env,
-                        new_continuation)))
+                    Ok(Left(Task::eval(Expression(operator.clone()),
+                        env.clone(), new_continuation)))
                 } else if expr.0.is_literal() {
                     Ok(Left(cont.pass_value(expr.0.clone())))
                 } else {
                     Err(Error)
                 }
             },
-            TaskEnum::Apply {procedure, arguments, environment, continuation} =>
+            TaskEnum::Apply {ref procedure, ref arguments, ref environment, ref
+                continuation} =>
             {
                 if let Some(procc) = procedure.as_procedure() {
-                    Ok(Left(procc.apply(arguments, environment,
-                        continuation)?))
+                    // NOTE: Cloning `arguments` is expensive and only necessary
+                    // to satisfy the typechecker.
+                    Ok(Left(procc.apply(arguments.clone(), environment.clone(),
+                        continuation.clone())?))
                 } else {
                     Err(Error)
                 }
             }
-            TaskEnum::Done(val) => Ok(Right(val)),
+            TaskEnum::Done(ref val) => Ok(Right(val.clone())),
         }
     }
 }
@@ -312,12 +321,12 @@ impl Procedure {
             ProcEnum::SimpleBuiltin(builtin) => {
                 Ok(ctx.pass_value(builtin(args)?))
             },
-            ProcEnum::Lambda(lamb) => {
+            ProcEnum::Lambda(ref lamb) => {
                 let new_env = lamb.environment.make_child();
                 lamb.binder.match_with_args(args, &new_env)?;
-                Ok(Task::eval(lamb.body, new_env, ctx))
+                Ok(Task::eval(lamb.body.clone(), new_env, ctx))
             },
-            ProcEnum::Continuation(cont) => {
+            ProcEnum::Continuation(ref cont) => {
                 if args.len() == 1 {
                     Ok(cont.pass_value(args[0].clone()))
                 } else {
@@ -345,7 +354,7 @@ impl Expression {
 
 impl Environment {
     fn from_data(data: EnvironmentData) -> Environment {
-        Environment(Rc::new(RefCell::new(data)))
+        Environment(Gc::new(GcCell::new(data)))
     }
 
     // Rethink structure
@@ -358,7 +367,7 @@ impl Environment {
 
     fn lookup(&self, variable: &str) -> Option<Scheme> {
         match self.lookup_binding(variable) {
-            Some(Binding::Variable(val)) => Some(val),
+            Some(Binding::Variable(ref val)) => Some(val.clone()),
             _ => None,
         }
     }
@@ -387,7 +396,8 @@ impl Environment {
 pub fn lambda(operands: Vec<Expression>, env: Environment, c: Continuation) ->
     Result<Task, Error> {
 
-    let operands_linked = Scheme::list(operands.into_iter().map(|expr| expr.0));
+    let operands_linked = Scheme::list(operands.into_iter().map(|expr|
+        expr.0.clone()));
     let (formals, body) = operands_linked.as_pair().ok_or(Error)?;
     //let binder = formals.as_symbol().ok_or(Error)?;
     let (expr, null) = body.as_pair().ok_or(Error)?;

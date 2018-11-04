@@ -4,13 +4,14 @@
 use std::borrow;
 use std::fmt;
 use std::iter::DoubleEndedIterator;
-use std::rc::Rc;
+
+use gc::Gc;
 
 // Temp
 pub use runtime::{Binding, Environment, Procedure};
 
 // TODO: Rethink derive(PartialEq)
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Finalize, PartialEq, Trace)]
 enum SchemeData {
     Boolean(bool),
     Character(char),
@@ -24,15 +25,15 @@ enum SchemeData {
     Vector(Vec<Scheme>),
 }
 
-#[derive(Clone, Debug, PartialEq)]
-pub struct Scheme(Rc<SchemeData>);
+#[derive(Clone, Debug, Finalize, PartialEq, Trace)]
+pub struct Scheme(Gc<SchemeData>);
 
 #[derive(Clone, Debug)]
 pub struct Error;
 
 impl Scheme {
     fn from_data(data: SchemeData) -> Scheme {
-        Scheme(Rc::new(data))
+        Scheme(Gc::new(data))
     }
 
     pub fn boolean(b: bool) -> Scheme {
