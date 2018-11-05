@@ -1,8 +1,5 @@
 
 use std::cmp;
-use std::collections::HashMap;
-
-use either::{Either, Left, Right};
 
 use runtime::{self, SimpleBuiltin, BuiltinSyntax, Continuation, Environment,
     Expression, Task};

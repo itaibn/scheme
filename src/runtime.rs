@@ -1,7 +1,5 @@
 
-use std::cell::RefCell;
 use std::collections::HashMap;
-//use std::rc::Rc;
 
 use either::{Either, Left, Right};
 use gc::{Gc, GcCell};
@@ -226,12 +224,12 @@ impl Task {
                         Err(Error)
                     }
                 } else if let Some((operator, operands_linked)) =
-                        expr.0.as_pair() {
+                        expr.as_pair() {
                     if let Some(symb) = operator.as_symbol() {
                         if let Some(Binding::Syntax(form)) =
                             env.lookup_binding(symb) {
                             let operands =
-                                operands_linked.into_vec()?
+                                operands_linked.0.into_vec()?
                                                .into_iter()
                                                .map(|val| Expression(val))
                                                .collect();
@@ -240,7 +238,7 @@ impl Task {
                         }
                     }
                     // Procedure call
-                    let operands = operands_linked.into_vec()?;
+                    let operands = operands_linked.0.into_vec()?;
                     let expressions: Vec<_> = operands.into_iter().rev()
                             .map(|val| Expression(val)).collect();
                     let new_continuation = Continuation::from_data(
@@ -250,9 +248,9 @@ impl Task {
                             environment: env.clone(),
                             next_continuation: cont.clone(),
                         });
-                    Ok(Left(Task::eval(Expression(operator.clone()),
-                        env.clone(), new_continuation)))
-                } else if expr.0.is_literal() {
+                    Ok(Left(Task::eval(operator.clone(), env.clone(),
+                        new_continuation)))
+                } else if expr.is_literal() {
                     Ok(Left(cont.pass_value(expr.0.clone())))
                 } else {
                     Err(Error)
