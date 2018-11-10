@@ -5,10 +5,9 @@ use std::borrow;
 use std::fmt;
 use std::iter::DoubleEndedIterator;
 
-use gc::Gc;
+use gc::{Gc, GcCell};
 
-// Temp
-pub use runtime::{Binding, Environment, Procedure};
+use runtime::Procedure;
 
 // TODO: Rethink derive(PartialEq)
 #[derive(Clone, Debug, Finalize, PartialEq, Trace)]
@@ -16,18 +15,31 @@ enum SchemeData {
     Boolean(bool),
     Character(char),
     Null,
-    Cons(Scheme, Scheme),
+    Cons(SchemeMut, SchemeMut),
     Procedure(Procedure),
     Symbol(String),
     Bytevector(Vec<u8>),
     Int(i64),
     String(Vec<char>),
     Vector(Vec<Scheme>),
+
+    Unspecified,
 }
 
+/// An immutable reference to a Scheme value. In R7RS language (cf. Section
+/// 3.4), this stands for a location whenever the location is stored in an
+/// immutable object.
 #[derive(Clone, Debug, Finalize, PartialEq, Trace)]
 pub struct Scheme(Gc<SchemeData>);
 
+/// A mutable reference to a Scheme value. In R7RS language (cf. Section 3.4),
+/// this stands for a location whenever the location is stored in a mutable
+/// object. (TODO: Is this type actually necessary?)
+#[derive(Clone, Debug, Finalize, PartialEq, Trace)]
+pub struct SchemeMut(GcCell<Scheme>);
+
+/// Error type for Scheme computations. Currently a stub and doesn't hold any
+/// information.
 #[derive(Clone, Debug)]
 pub struct Error;
 
@@ -69,12 +81,18 @@ impl Scheme {
     }
 
     pub fn cons(fst: Scheme, snd: Scheme) -> Scheme {
-        Scheme::from_data(SchemeData::Cons(fst, snd))
+        Scheme::from_data(SchemeData::Cons(SchemeMut::new(fst),
+            SchemeMut::new(snd)))
     }
 
-    pub fn as_pair(&self) -> Option<(&Scheme, &Scheme)> {
+    // TODO: Make this return values rather than references
+    pub fn as_pair(&self) -> Option<(Scheme, Scheme)> {
+        self.as_pair_mut().map(|(x, y)| (x.into(), y.into()))
+    }
+
+    pub fn as_pair_mut(&self) -> Option<(SchemeMut, SchemeMut)> {
         if let SchemeData::Cons(ref x, ref y) = *self.0 {
-            Some((x, y))
+            Some((x.clone(), y.clone()))
         } else {
             None
         }
@@ -152,6 +170,10 @@ impl Scheme {
         }
     }
 
+    pub fn unspecified() -> Scheme {
+        Scheme::from_data(SchemeData::Unspecified)
+    }
+
     pub fn is_literal(&self) -> bool {
            self.as_boolean().is_some()
         || self.as_int().is_some()
@@ -169,7 +191,7 @@ impl Scheme {
     // May get into infinite loops
     pub fn into_vec(&self) -> Result<Vec<Scheme>, Error> {
         let mut cur_elems = Vec::new();
-        let mut head = self;
+        let mut head = self.clone();
 
         loop {
             if let Some((car, cdr)) = head.as_pair() {
@@ -183,6 +205,7 @@ impl Scheme {
         }
     }
 
+    // mutable?
     pub fn list<E: borrow::Borrow<Scheme>, I: IntoIterator<Item=E>>(iter: I) ->
         Scheme where I::IntoIter : DoubleEndedIterator {
 
@@ -251,6 +274,22 @@ impl fmt::Display for Scheme {
         } else {
             write!(f, "<unrecognized data type>")
         }
+    }
+}
+
+impl SchemeMut {
+    pub fn new(x: Scheme) -> SchemeMut {
+        SchemeMut(GcCell::new(x))
+    }
+
+    pub fn replace(&self, y: Scheme) {
+        *self.0.borrow_mut() = y;
+    }
+}
+
+impl From<SchemeMut> for Scheme {
+    fn from(x: SchemeMut) -> Scheme {
+        x.0.borrow().clone()
     }
 }
 

@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use either::{Either, Left, Right};
 use gc::{Gc, GcCell};
 
-use scheme::{Error, Scheme};
+use scheme::{Error, Scheme, SchemeMut};
 
 /// Wrapper type for unevaluated Scheme expressions.
 #[derive(Clone, Debug, Finalize, PartialEq, Trace)]
@@ -33,7 +33,7 @@ pub struct EnvironmentData {
 // pub?
 #[derive(Clone, Debug, Finalize, PartialEq, Trace)]
 pub enum Binding {
-    Variable(Scheme),
+    Variable(SchemeMut),
     Syntax(BuiltinSyntax),
 }
 
@@ -89,6 +89,9 @@ enum ProcEnum {
     SimpleBuiltin(SimpleBuiltin),
     Lambda(Lambda),
     Continuation(Continuation),
+    // A procedure that takes one argument and sets a variable to equal that
+    // argument. Used to implement "set!".
+    Set(String),
 }
 
 pub type Builtin = fn(Vec<Scheme>, Environment, Continuation) -> Result<Task,
@@ -219,7 +222,7 @@ impl Task {
 
                 if let Some(s) = expr.as_symbol() {
                     if let Some(res) = env.lookup(&s) {
-                        Ok(Left(cont.pass_value(res.clone())))
+                        Ok(Left(cont.pass_value(res.into())))
                     } else {
                         Err(Error)
                     }
@@ -280,16 +283,6 @@ impl Scheme {
             continuation);
         task.complete()
     }
-
-    fn apply(&self, args: Vec<Scheme>, env: &Environment) -> Result<Scheme,
-        Error> {
-
-        if let Some(procc) = self.as_procedure() {
-            procc.apply(args, env.clone(), Continuation::default())?.complete()
-        } else {
-            Err(Error)
-        }
-    }
 }
 
 impl Procedure {
@@ -307,6 +300,10 @@ impl Procedure {
 
     pub fn continuation(cont: Continuation) -> Procedure {
         Procedure(ProcEnum::Continuation(cont))
+    }
+
+    pub fn set(var: String) -> Procedure {
+        Procedure(ProcEnum::Set(var))
     }
 
     fn apply(self, args: Vec<Scheme>, env: Environment, ctx: Continuation) ->
@@ -331,6 +328,15 @@ impl Procedure {
                     Err(Error)
                 }
             },
+            ProcEnum::Set(ref var) => {
+                let loc = env.lookup(var).ok_or(Error)?;
+                if args.len() == 1 {
+                    loc.replace(args[0].clone());
+                    Ok(ctx.pass_value(Scheme::unspecified()))
+                } else {
+                    Err(Error)
+                }
+            },
         }
     }
 }
@@ -350,6 +356,12 @@ impl Expression {
     }
 }
 
+impl Binding {
+    pub fn variable(x: Scheme) -> Binding {
+        Binding::Variable(SchemeMut::new(x))
+    }
+}
+
 impl Environment {
     fn from_data(data: EnvironmentData) -> Environment {
         Environment(Gc::new(GcCell::new(data)))
@@ -363,7 +375,8 @@ impl Environment {
         })
     }
 
-    fn lookup(&self, variable: &str) -> Option<Scheme> {
+    // TODO: Return SchemeMut
+    fn lookup(&self, variable: &str) -> Option<SchemeMut> {
         match self.lookup_binding(variable) {
             Some(Binding::Variable(ref val)) => Some(val.clone()),
             _ => None,
@@ -380,7 +393,7 @@ impl Environment {
     // pub?
     pub fn insert(&self, variable: &str, val: Scheme) {
         self.0.borrow_mut().local.insert(variable.to_string(),
-            Binding::Variable(val));
+            Binding::Variable(SchemeMut::new(val)));
     }
 
     fn make_child(&self) -> Environment {

@@ -1,9 +1,13 @@
 
 use std::cmp;
 
-use runtime::{self, SimpleBuiltin, BuiltinSyntax, Continuation, Environment,
-    Expression, Task};
-use scheme::{self, Scheme, Error};
+use runtime::{self,
+    Continuation,
+    Environment,
+    Expression,
+    Task
+};
+use scheme::{Error, Scheme};
 
 fn quote(operands: Vec<Expression>, _: Environment, c: Continuation) ->
     Result<Task, Error> {
@@ -34,6 +38,17 @@ fn syntax_if(operands: Vec<Expression>, env: Environment, c: Continuation) ->
         Ok(Task::eval(cond, env, new_continuation))
     }
 }
+
+/*
+fn set(operands: Vec<Expression>, env: Environment, c: Continuation) ->
+    Result<Task, Error> {
+
+    if operands.len() != 2 {
+        Err(Error)
+    } else {
+        if let Some(var) = operands[0].as_symbol() {
+            let set_fn = Procedure
+*/
 
 // A predicate which is false for any argument, and gives an error when given
 // zero or more than one arguments. Currently a few predicates alias to this
@@ -305,7 +320,26 @@ fn cdr(args: Vec<Scheme>) -> Result<Scheme, Error> {
     }
 }
 
-// set-car! and set-cdr! unimplemented since there's mutable pair support.
+fn set_car(args: Vec<Scheme>) -> Result<Scheme, Error> {
+    if args.len() == 2 {
+        let (car, _) = args[0].as_pair_mut().ok_or(Error)?;
+        car.replace(args[1].clone());
+        Ok(Scheme::unspecified())
+    } else {
+        Err(Error)
+    }
+}
+
+fn set_cdr(args: Vec<Scheme>) -> Result<Scheme, Error> {
+    if args.len() == 2 {
+        let (_, cdr) = args[0].as_pair_mut().ok_or(Error)?;
+        cdr.replace(args[1].clone());
+        Ok(Scheme::unspecified())
+    } else {
+        Err(Error)
+    }
+}
+
 // caar...cddddr unimplemented because they're tedious
 
 fn is_null(args: Vec<Scheme>) -> Result<Scheme, Error> {
@@ -470,16 +504,18 @@ fn call_with_current_continuation(args: Vec<Scheme>, env: Environment, ctx:
 }
 
 pub fn initial_environment() -> Environment {
-    fn simple(f: SimpleBuiltin) -> scheme::Binding {
-        scheme::Binding::Variable(Scheme::procedure(runtime::Procedure::simple_builtin(f)))
+    use runtime::{Binding, Builtin, BuiltinSyntax, SimpleBuiltin};
+
+    fn simple(f: SimpleBuiltin) -> Binding {
+        Binding::variable(Scheme::procedure(runtime::Procedure::simple_builtin(f)))
     }
 
-    fn complex(f: runtime::Builtin) -> scheme::Binding {
-        scheme::Binding::Variable(Scheme::procedure(runtime::Procedure::builtin(f)))
+    fn complex(f: Builtin) -> Binding {
+        Binding::variable(Scheme::procedure(runtime::Procedure::builtin(f)))
     }
 
-    fn syntax(f: BuiltinSyntax) -> scheme::Binding {
-        scheme::Binding::Syntax(f)
+    fn syntax(f: BuiltinSyntax) -> Binding {
+        Binding::Syntax(f)
     }
 
     let hashmap = hashmap! {
@@ -520,6 +556,8 @@ pub fn initial_environment() -> Environment {
         "cons".to_string() => simple(cons),
         "car".to_string() => simple(car),
         "cdr".to_string() => simple(cdr),
+        "set-car!".to_string() => simple(set_car),
+        "set-cdr!".to_string() => simple(set_cdr),
         "null?".to_string() => simple(is_null),
         "list?".to_string() => simple(is_list),
         "make-list".to_string() => simple(make_list),
