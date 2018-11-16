@@ -30,10 +30,8 @@ fn syntax_if(operands: Vec<Expression>, env: Environment, c: Continuation) ->
         let if_true = iter.next().unwrap();
         let if_false = iter.next().unwrap();
 
-        let if_true_task = Task::eval(if_true, env.clone(), c.clone());
-        let if_false_task = Task::eval(if_false, env.clone(), c);
-        let new_continuation = Continuation::if_then_else(if_true_task,
-            if_false_task);
+        let new_continuation = Continuation::if_then_else(if_true, if_false,
+            env.clone(), c);
 
         Ok(Task::eval(cond, env, new_continuation))
     }

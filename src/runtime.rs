@@ -51,20 +51,22 @@ enum ContinuationData {
         environment: Environment,
         next_continuation: Continuation,
     },
-    // TODO: Only allow evaluation tasks in this continuation
     IfThenElse {
-        if_true: Task,
-        if_false: Task,
+        if_true: Expression,
+        if_false: Expression,
+        environment: Environment,
+        next_continuation: Continuation,
     },
     End,
 }
 
 // derive(PartialEq)?
-#[derive(Clone, Debug, Finalize, PartialEq, Trace)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Task(TaskEnum);
 
 // derive(PartialEq)?
-#[derive(Clone, Debug, Finalize, PartialEq, Trace)]
+// derive(Finalize, Trace)?
+#[derive(Clone, Debug, PartialEq)]
 enum TaskEnum {
     Eval {
         expression: Expression,
@@ -121,9 +123,11 @@ impl Continuation {
         Continuation(Gc::new(data))
     }
 
-    pub fn if_then_else(if_true: Task, if_false: Task) -> Continuation {
+    pub fn if_then_else(if_true: Expression, if_false: Expression, environment:
+        Environment, next_continuation: Continuation) -> Continuation {
+
         Continuation::from_data(ContinuationData::IfThenElse {
-            if_true, if_false
+            if_true, if_false, environment, next_continuation
         })
     }
 
@@ -154,13 +158,17 @@ impl Continuation {
                     },
                 }
             },
-            ContinuationData::IfThenElse {ref if_true, ref if_false} => {
+            ContinuationData::IfThenElse {ref if_true, ref if_false, ref
+                environment, ref next_continuation} => {
+                
                 if value.truey() {
-                    if_true.clone()
+                    Task::eval(if_true.clone(), environment.clone(),
+                        next_continuation.clone())
                 } else {
-                    if_false.clone()
+                    Task::eval(if_false.clone(), environment.clone(),
+                        next_continuation.clone())
                 }
-            },
+            }
             ContinuationData::End => Task::done(value),
         }
     }
