@@ -39,7 +39,6 @@ fn syntax_if(operands: Vec<Expression>, env: Environment, c: Continuation) ->
     }
 }
 
-/*
 fn set(operands: Vec<Expression>, env: Environment, c: Continuation) ->
     Result<Task, Error> {
 
@@ -47,8 +46,14 @@ fn set(operands: Vec<Expression>, env: Environment, c: Continuation) ->
         Err(Error)
     } else {
         if let Some(var) = operands[0].as_symbol() {
-            let set_fn = Procedure
-*/
+            let set_continuation = Continuation::set(var.to_string(),
+                env.clone(), c);
+            Ok(Task::eval(operands[1].clone(), env, set_continuation))
+        } else {
+            Err(Error)
+        }
+    }
+}
 
 // A predicate which is false for any argument, and gives an error when given
 // zero or more than one arguments. Currently a few predicates alias to this
@@ -571,9 +576,11 @@ pub fn initial_environment() -> Environment {
         "symbol->string".to_string() => simple(symbol_to_string),
         "call-with-current-continuation".to_string() =>
             complex(call_with_current_continuation),
+
         "lambda".to_string() => syntax(runtime::lambda),
         "quote".to_string() => syntax(quote),
-        "if".to_string() => syntax(syntax_if)
+        "if".to_string() => syntax(syntax_if),
+        "set!".to_string() => syntax(set)
     };
 
     Environment::from_hashmap(hashmap)

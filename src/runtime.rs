@@ -164,6 +164,21 @@ impl Continuation {
             ContinuationData::End => Task::done(value),
         }
     }
+
+    /// A continuation that takes a value, sets `variable` to this value in
+    /// `environment`, and then passes an unspecified value to
+    /// `next_continuation`. Used to implement set!.
+    pub(crate) fn set(variable: String, environment: Environment, next_continuation:
+        Continuation) -> Continuation {
+
+        let set_proc = Scheme::procedure(Procedure::set(variable));
+        Continuation::from_data(ContinuationData::Application {
+            values: vec![set_proc],
+            expressions: Vec::new(),
+            environment: environment,
+            next_continuation: next_continuation,
+        })
+    }
 }
 
 impl Default for Continuation {
@@ -302,7 +317,7 @@ impl Procedure {
         Procedure(ProcEnum::Continuation(cont))
     }
 
-    pub fn set(var: String) -> Procedure {
+    pub(crate) fn set(var: String) -> Procedure {
         Procedure(ProcEnum::Set(var))
     }
 
