@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use either::{Either, Left, Right};
 use gc::{Gc, GcCell};
 
-use scheme::{Error, Scheme, SchemeMut};
+use crate::scheme::{Error, Scheme, SchemeMut};
 
 /// Wrapper type for unevaluated Scheme expressions.
 #[derive(Clone, Debug, Finalize, PartialEq, Trace)]

@@ -7,7 +7,7 @@ use std::iter::DoubleEndedIterator;
 
 use gc::{Gc, GcCell};
 
-use runtime::Procedure;
+use crate::runtime::Procedure;
 
 // TODO: Rethink derive(PartialEq)
 #[derive(Clone, Debug, Finalize, PartialEq, Trace)]
@@ -303,8 +303,8 @@ impl fmt::Debug for SchemeData {
 
 #[cfg(test)]
 mod test {
-    use builtin::initial_environment;
-    use read::read;
+    use crate::builtin::initial_environment;
+    use crate::read::read;
     use super::Scheme;
 
     fn comparison(input: &str, output: Scheme) {

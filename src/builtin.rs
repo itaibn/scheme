@@ -1,13 +1,13 @@
 
 use std::cmp;
 
-use runtime::{self,
+use crate::runtime::{self,
     Continuation,
     Environment,
     Expression,
     Task
 };
-use scheme::{Error, Scheme};
+use crate::scheme::{Error, Scheme};
 
 fn quote(operands: Vec<Expression>, _: Environment, c: Continuation) ->
     Result<Task, Error> {
@@ -507,7 +507,7 @@ fn call_with_current_continuation(args: Vec<Scheme>, env: Environment, ctx:
 }
 
 pub fn initial_environment() -> Environment {
-    use runtime::{Binding, Builtin, BuiltinSyntax, SimpleBuiltin};
+    use crate::runtime::{Binding, Builtin, BuiltinSyntax, SimpleBuiltin};
 
     fn simple(f: SimpleBuiltin) -> Binding {
         Binding::variable(Scheme::procedure(runtime::Procedure::simple_builtin(f)))

@@ -1,6 +1,6 @@
 mod lexer;
 
-use scheme::Scheme;
+use crate::scheme::Scheme;
 use self::lexer::{Lexer, Token};
 
 use std::mem;
