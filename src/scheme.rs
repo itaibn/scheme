@@ -383,4 +383,9 @@ mod test {
         comparison("(call-with-current-continuation (lambda (cont) (* 3 (cont\
             (* 5 6)))))", Scheme::int(30));
     }
+
+    #[test]
+    fn test_symbol_eq() {
+        comparison("(symbol=? 'a 'a)", Scheme::boolean(true));
+    }
 }

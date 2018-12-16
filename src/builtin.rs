@@ -371,8 +371,7 @@ fn make_list(args: Vec<Scheme>) -> Result<Scheme, Error> {
     let fill = if args.len() == 2 {
         args[1].clone()
     } else {
-        // Unspecified
-        Scheme::int(0)
+        Scheme::unspecified()
     };
     let mut new_list = Scheme::null();
     for _ in 0..length {
@@ -474,9 +473,33 @@ fn list_ref(args: Vec<Scheme>) -> Result<Scheme, Error> {
 
 // Omitted: list-set! memq memv member assq assv assoc list-copy
 
+// Section 6.5: Symbols
+
+// Note: Standard is unclear what to return or error when the output is not #t.
 fn is_symbol(args: Vec<Scheme>) -> Result<Scheme, Error> {
     if args.len() == 1 {
         Ok(Scheme::boolean(args[0].as_symbol().is_some()))
+    } else {
+        Err(Error)
+    }
+}
+
+fn symbol_eq(args: Vec<Scheme>) -> Result<Scheme, Error> {
+    if args.len() < 2 {
+        return Err(Error);
+    }
+    if let Some(symb_str) = args[0].as_symbol() {
+        let mut res = true;
+        for symb in &args[1..] {
+            if let Some(other_symb_str) = symb.as_symbol() {
+                if symb_str != other_symb_str {
+                    res = false
+                }
+            } else {
+                return Err(Error)
+            }
+        }
+        Ok(Scheme::boolean(res))
     } else {
         Err(Error)
     }
@@ -490,6 +513,18 @@ fn symbol_to_string(args: Vec<Scheme>) -> Result<Scheme, Error>
     if let Some(symb_str) = args[0].as_symbol() {
         let string: Vec<char> = symb_str.chars().collect();
         Ok(Scheme::string(string))
+    } else {
+        Err(Error)
+    }
+}
+
+fn string_to_symbol(args: Vec<Scheme>) -> Result<Scheme, Error> {
+    if args.len() != 1 {
+        return Err(Error);
+    }
+    if let Some(scheme_string) = args[0].as_string() {
+        let string: String = scheme_string.iter().collect();
+        Ok(Scheme::symbol(string))
     } else {
         Err(Error)
     }
@@ -571,9 +606,12 @@ pub fn initial_environment() -> Environment {
         "list-tail".to_string() => simple(list_tail),
         "list-ref".to_string() => simple(list_ref),
         "symbol?".to_string() => simple(is_symbol),
+        "symbol=?".to_string() => simple(symbol_eq),
         "symbol->string".to_string() => simple(symbol_to_string),
+        "string->symbol".to_string() => simple(string_to_symbol),
         "call-with-current-continuation".to_string() =>
             complex(call_with_current_continuation),
+        "call/cc".to_string() => complex(call_with_current_continuation),
 
         "lambda".to_string() => syntax(runtime::lambda),
         "quote".to_string() => syntax(quote),
