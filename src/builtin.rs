@@ -74,21 +74,24 @@ fn is_integer(args: Vec<Scheme>) -> Result<Scheme, Error> {
     }
 }
 
-fn comparison<F>(args: Vec<Scheme>, cmp: F) -> Result<Scheme, Error>
-    where F: Fn(i64, i64) -> bool {
+fn comparison<A, Conv, Comp>(args: Vec<Scheme>, convert: Conv, cmp: Comp) ->
+        Result<Scheme, Error>
+    where
+        Conv: Fn(&Scheme) -> Option<A>,
+        Comp: Fn(&A, &A) -> bool {
 
     if args.len() < 2 {
         return Err(Error);
     }
-    let mut previous = match args[0].as_int() {
+    let mut previous = match convert(&args[0]) {
         Some(n) => n,
         None => return Err(Error),
     };
     let mut condition = true;
     for elem in &args[1..] {
-        match elem.as_int() {
+        match convert(elem) {
             Some(next) => {
-                if cmp(previous, next) {
+                if cmp(&previous, &next) {
                     previous = next;
                 } else {
                     condition = false;
@@ -100,24 +103,33 @@ fn comparison<F>(args: Vec<Scheme>, cmp: F) -> Result<Scheme, Error>
     Ok(Scheme::boolean(condition))
 }
 
+fn int_comparison<F>(args: Vec<Scheme>, cmp: F) -> Result<Scheme, Error>
+    where F: Fn(i64, i64) -> bool {
+
+    comparison(args, |x| x.as_int(), |n, m| cmp(*n, *m))
+}
+
+// TODO: Replace below function implementations with direct calls to comparison,
+// & remove int_comparison.
+
 fn num_eq(args: Vec<Scheme>) -> Result<Scheme, Error> {
-    comparison(args, |n, m| n == m)
+    int_comparison(args, |n, m| n == m)
 }
 
 fn less(args: Vec<Scheme>) -> Result<Scheme, Error> {
-    comparison(args, |n, m| n < m)
+    int_comparison(args, |n, m| n < m)
 }
 
 fn greater(args: Vec<Scheme>) -> Result<Scheme, Error> {
-    comparison(args, |n, m| n > m)
+    int_comparison(args, |n, m| n > m)
 }
 
 fn less_equal(args: Vec<Scheme>) -> Result<Scheme, Error> {
-    comparison(args, |n, m| n <= m)
+    int_comparison(args, |n, m| n <= m)
 }
 
 fn greater_equal(args: Vec<Scheme>) -> Result<Scheme, Error> {
-    comparison(args, |n, m| n >= m)
+    int_comparison(args, |n, m| n >= m)
 }
 
 fn is_zero(args: Vec<Scheme>) -> Result<Scheme, Error> {
@@ -530,6 +542,77 @@ fn string_to_symbol(args: Vec<Scheme>) -> Result<Scheme, Error> {
     }
 }
 
+// Section 6.6: Characters
+
+fn is_char(args: Vec<Scheme>) -> Result<Scheme, Error> {
+    if args.len() != 1 {
+        return Err(Error);
+    }
+    Ok(Scheme::boolean(args[0].as_character().is_some()))
+}
+
+fn char_eq(args: Vec<Scheme>) -> Result<Scheme, Error> {
+    comparison(args, |x| x.as_character(), char::eq)
+}
+
+fn char_lt(args: Vec<Scheme>) -> Result<Scheme, Error> {
+    comparison(args, |x| x.as_character(), char::lt)
+}
+
+fn char_gt(args: Vec<Scheme>) -> Result<Scheme, Error> {
+    comparison(args, |x| x.as_character(), char::gt)
+}
+
+fn char_le(args: Vec<Scheme>) -> Result<Scheme, Error> {
+    comparison(args, |x| x.as_character(), char::le)
+}
+
+fn char_ge(args: Vec<Scheme>) -> Result<Scheme, Error> {
+    comparison(args, |x| x.as_character(), char::ge)
+}
+
+// TODO: Full Unicode compliance
+fn convert_char_ci(x: &Scheme) -> Option<char> {
+    if let Some(c) = x.as_character() {
+        // NOTE: A proper implementation should use foldcase, not lowercase.
+        let mut lowercase = c.to_lowercase();
+        let res = lowercase.next().expect(&format!("I didn't know Unicode \
+            characters could have the empty string as a lowercase form ({})",
+            c));
+        assert!(lowercase.next().is_none(), "'{}' converts into a \
+            multi-character lowercase string and probably has behavior I don't \
+            know how to handle.");
+        Some(res)
+    } else {
+        None
+    }
+}
+
+// char library procedure
+fn char_ci_eq(args: Vec<Scheme>) -> Result<Scheme, Error> {
+    comparison(args, convert_char_ci, char::eq)
+}
+
+// char library procedure
+fn char_ci_lt(args: Vec<Scheme>) -> Result<Scheme, Error> {
+    comparison(args, convert_char_ci, char::lt)
+}
+
+// char library procedure
+fn char_ci_gt(args: Vec<Scheme>) -> Result<Scheme, Error> {
+    comparison(args, convert_char_ci, char::gt)
+}
+
+// char library procedure
+fn char_ci_le(args: Vec<Scheme>) -> Result<Scheme, Error> {
+    comparison(args, convert_char_ci, char::le)
+}
+
+// char library procedure
+fn char_ci_ge(args: Vec<Scheme>) -> Result<Scheme, Error> {
+    comparison(args, convert_char_ci, char::ge)
+}
+
 fn call_with_current_continuation(args: Vec<Scheme>, env: Environment, ctx:
     Continuation) -> Result<Task, Error> {
 
@@ -556,68 +639,89 @@ pub fn initial_environment() -> Environment {
         Binding::Syntax(f)
     }
 
-    let hashmap = hashmap! {
-        "integer?".to_string() => simple(is_integer),
+    let pre_hashmap = hashmap! {
+        "integer?" => simple(is_integer),
         // Temporary: Integers are the only numerical types, so all other type
         // predicates and some other numerical predicates are aliases of
         // integer?
-        "number?".to_string() => simple(is_integer),
-        "complex?".to_string() => simple(is_integer),
-        "real?".to_string() => simple(is_integer),
-        "exact?".to_string() => simple(is_integer),
-        "inexact?".to_string() => simple(false_predicate),
-        "exact-integer?".to_string() => simple(is_integer),
-        "finite?".to_string() => simple(is_integer),
-        "infinite?".to_string() => simple(false_predicate),
-        "nan?".to_string() => simple(false_predicate),
-        "=".to_string() => simple(num_eq),
-        "<".to_string() => simple(less),
-        ">".to_string() => simple(greater),
-        "<=".to_string() => simple(less_equal),
-        ">=".to_string() => simple(greater_equal),
-        "zero?".to_string() => simple(is_zero),
-        "positive?".to_string() => simple(is_positive),
-        "negative?".to_string() => simple(is_negative),
-        "odd?".to_string() => simple(is_odd),
-        "even?".to_string() => simple(is_even),
-        "max".to_string() => simple(max),
-        "min".to_string() => simple(min),
+        "number?" => simple(is_integer),
+        "complex?" => simple(is_integer),
+        "real?" => simple(is_integer),
+        "exact?" => simple(is_integer),
+        "inexact?" => simple(false_predicate),
+        "exact-integer?" => simple(is_integer),
+        "finite?" => simple(is_integer),
+        "infinite?" => simple(false_predicate),
+        "nan?" => simple(false_predicate),
+        "=" => simple(num_eq),
+        "<" => simple(less),
+        ">" => simple(greater),
+        "<=" => simple(less_equal),
+        ">=" => simple(greater_equal),
+        "zero?" => simple(is_zero),
+        "positive?" => simple(is_positive),
+        "negative?" => simple(is_negative),
+        "odd?" => simple(is_odd),
+        "even?" => simple(is_even),
+        "max" => simple(max),
+        "min" => simple(min),
         // Rename
-        "sum".to_string() => simple(sum),
-        "*".to_string() => simple(times),
+        "sum" => simple(sum),
+        "*" => simple(times),
         // Rename
-        "minus".to_string() => simple(minus),
-        "not".to_string() => simple(not),
-        "boolean?".to_string() => simple(is_boolean),
-        "boolean=?".to_string() => simple(boolean_equal),
-        "pair?".to_string() => simple(is_pair),
-        "cons".to_string() => simple(cons),
-        "car".to_string() => simple(car),
-        "cdr".to_string() => simple(cdr),
-        "set-car!".to_string() => simple(set_car),
-        "set-cdr!".to_string() => simple(set_cdr),
-        "null?".to_string() => simple(is_null),
-        "list?".to_string() => simple(is_list),
-        "make-list".to_string() => simple(make_list),
-        "list".to_string() => simple(list),
-        "length".to_string() => simple(length),
-        "append".to_string() => simple(append),
-        "reverse".to_string() => simple(reverse),
-        "list-tail".to_string() => simple(list_tail),
-        "list-ref".to_string() => simple(list_ref),
-        "symbol?".to_string() => simple(is_symbol),
-        "symbol=?".to_string() => simple(symbol_eq),
-        "symbol->string".to_string() => simple(symbol_to_string),
-        "string->symbol".to_string() => simple(string_to_symbol),
-        "call-with-current-continuation".to_string() =>
+        "minus" => simple(minus),
+        "not" => simple(not),
+        "boolean?" => simple(is_boolean),
+        "boolean=?" => simple(boolean_equal),
+        "pair?" => simple(is_pair),
+        "cons" => simple(cons),
+        "car" => simple(car),
+        "cdr" => simple(cdr),
+        "set-car!" => simple(set_car),
+        "set-cdr!" => simple(set_cdr),
+        "null?" => simple(is_null),
+        "list?" => simple(is_list),
+        "make-list" => simple(make_list),
+        "list" => simple(list),
+        "length" => simple(length),
+        "append" => simple(append),
+        "reverse" => simple(reverse),
+        "list-tail" => simple(list_tail),
+        "list-ref" => simple(list_ref),
+        "symbol?" => simple(is_symbol),
+        "symbol=?" => simple(symbol_eq),
+        "symbol->string" => simple(symbol_to_string),
+        "string->symbol" => simple(string_to_symbol),
+        "char?" => simple(is_char),
+        "char=?" => simple(char_eq),
+        "char<?" => simple(char_lt),
+        "char>?" => simple(char_gt),
+        "char<=?" => simple(char_le),
+        "char>=?" => simple(char_ge),
+        // char library procedure
+        "char-ci=?" => simple(char_ci_eq),
+        // char library procedure
+        "char-ci<?" => simple(char_ci_lt),
+        // char library procedure
+        "char-ci>?" => simple(char_ci_gt),
+        // char library procedure
+        "char-ci<=?" => simple(char_ci_le),
+        // char library procedure
+        "char-ci>=?" => simple(char_ci_ge),
+        "call-with-current-continuation" =>
             complex(call_with_current_continuation),
-        "call/cc".to_string() => complex(call_with_current_continuation),
+        "call/cc" => complex(call_with_current_continuation),
 
-        "lambda".to_string() => syntax(runtime::lambda),
-        "quote".to_string() => syntax(quote),
-        "if".to_string() => syntax(syntax_if),
-        "set!".to_string() => syntax(set)
+        "lambda" => syntax(runtime::lambda),
+        "quote" => syntax(quote),
+        "if" => syntax(syntax_if),
+        "set!" => syntax(set)
     };
+
+    let mut hashmap = std::collections::HashMap::new();
+    for (key, value) in pre_hashmap {
+        hashmap.insert(key.to_string(), value);
+    }
 
     Environment::from_hashmap(hashmap)
 }
