@@ -286,11 +286,7 @@ impl Lexer<'_> {
         let mut negative = None;
         loop {
             if self.is_delimited() {
-                if fst_digit {
-                    break;
-                } else {
-                    return None;
-                }
+                break;
             }
             match self.get_char() {
                 Some(d) if d.is_digit(10) => {
@@ -310,6 +306,15 @@ impl Lexer<'_> {
                     negative = Some(true);
                 },
                 _ => {return None;}
+            }
+        }
+        if !fst_digit {
+            // Ad hoc rule for allowing +/- as identifiers, does not fully
+            // incorporate <peculiar identifier>
+            return match negative {
+                Some(true) => Some(Token::Identifier("-".to_string())),
+                Some(false) => Some(Token::Identifier("+".to_string())),
+                None => None,
             }
         }
         if negative == Some(true) {

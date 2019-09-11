@@ -665,11 +665,9 @@ pub fn initial_environment() -> Environment {
         "even?" => simple(is_even),
         "max" => simple(max),
         "min" => simple(min),
-        // Rename
-        "sum" => simple(sum),
+        "+" => simple(sum),
         "*" => simple(times),
-        // Rename
-        "minus" => simple(minus),
+        "-" => simple(minus),
         "not" => simple(not),
         "boolean?" => simple(is_boolean),
         "boolean=?" => simple(boolean_equal),

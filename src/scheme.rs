@@ -312,10 +312,9 @@ mod test {
         assert_eq!(expr.eval(&initial_environment()).unwrap(), output);
     }
 
-    // Only a valid test while "sum" is an alias for "+"
     #[test]
     fn test_sums() {
-        comparison("(sum 1 5 (sum 20) 1)", Scheme::int(27));
+        comparison("(+ 1 5 (+ 20) 1)", Scheme::int(27));
     }
 
     #[test]
