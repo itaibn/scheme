@@ -398,7 +398,6 @@ impl Environment {
         })
     }
 
-    // TODO: Return SchemeMut
     fn lookup(&self, variable: &str) -> Option<SchemeMut> {
         match self.lookup_binding(variable) {
             Some(Binding::Variable(ref val)) => Some(val.clone()),
