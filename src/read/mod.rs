@@ -57,7 +57,7 @@ impl<'a> Reader<'a> {
             Some(Token::Boolean(b)) => Ok(Scheme::boolean(b)),
             Some(Token::Character(c)) => Ok(Scheme::character(c)),
             Some(Token::String(s)) => Ok(Scheme::string(s)),
-            Some(Token::Number(n)) => Ok(Scheme::int(n)),
+            Some(Token::Number(n)) => Ok(n.to_scheme()),
             Some(Token::LeftParen) => self.read_list(),
             Some(Token::LeftVector) => self.read_vector(),
             Some(Token::LeftBytevector) => self.read_bytevector(),
@@ -117,7 +117,12 @@ impl<'a> Reader<'a> {
         loop {
             match self.read_token()? {
                 // TODO: Better conversion with num crate
-                Some(Token::Number(n)) => bytevector.push(n as u8),
+                Some(Token::Number(n)) => {
+                    match n.as_u8() {
+                        Some(k) => bytevector.push(k),
+                        None => return Err("non-byte in bytevector"),
+                    }
+                }
                 Some(Token::RightParen) => return Ok(
                     Scheme::bytevector(bytevector)),
                 _ => return Err("Unexpected token in bytevector"),

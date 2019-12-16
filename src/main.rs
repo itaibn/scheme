@@ -7,6 +7,7 @@ extern crate gc_derive;
 extern crate lazy_static;
 #[macro_use]
 extern crate maplit;
+extern crate num;
 extern crate regex;
 
 mod builtin;
