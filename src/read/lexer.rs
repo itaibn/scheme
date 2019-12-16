@@ -348,6 +348,11 @@ impl Lexer<'_> {
         })
     }
 
+    /// Parses numbers, consuming an unspecified number of characters if the
+    /// stream does not contain a valid number. Currently implements base and
+    /// exactness prefixes, ints and finite floats (no infinite floats, NaN,
+    /// rationals, or complex numbers). This implementation is a messy hack and
+    /// probably has bugs.
     fn get_number(&mut self) -> Option<Token> {
         let mut possible_ident = true;
         let mut exactness = None;
