@@ -16,6 +16,7 @@ enum SchemeData {
     Character(char),
     Null,
     Cons(SchemeMut, SchemeMut),
+    ConsImm(Scheme, Scheme),
     Procedure(Procedure),
     Symbol(String),
     Bytevector(Vec<u8>),
@@ -37,6 +38,8 @@ pub struct Scheme(Gc<SchemeData>);
 /// object. (TODO: Is this type actually necessary?)
 #[derive(Clone, Debug, Finalize, PartialEq, Trace)]
 pub struct SchemeMut(GcCell<Scheme>);
+// Note: I believe the above is used incorrect, especially with respect to
+// cloning. TODO: Review uses of SchemeMut.
 
 /// Error type for Scheme computations. Currently a stub and doesn't hold any
 /// information.
@@ -85,9 +88,20 @@ impl Scheme {
             SchemeMut::new(snd)))
     }
 
+    pub fn cons_imm(fst: Scheme, snd: Scheme) -> Scheme {
+        Scheme::from_data(SchemeData::ConsImm(fst, snd))
+    }
+
     // TODO: Make this return values rather than references
+    // ^- What does this mean?
     pub fn as_pair(&self) -> Option<(Scheme, Scheme)> {
-        self.as_pair_mut().map(|(x, y)| (x.into(), y.into()))
+        //self.as_pair_mut().map(|(x, y)| (x.into(), y.into()))
+        match *self.0 {
+            SchemeData::Cons(ref x, ref y) => Some((x.clone().into(),
+                y.clone().into())),
+            SchemeData::ConsImm(ref x, ref y) => Some((x.clone(), y.clone())),
+            _ => None,
+        }
     }
 
     pub fn as_pair_mut(&self) -> Option<(SchemeMut, SchemeMut)> {
