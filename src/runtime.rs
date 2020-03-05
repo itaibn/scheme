@@ -1,8 +1,9 @@
 
 use std::collections::HashMap;
+use std::fmt;
 
 use either::{Either, Left, Right};
-use gc::{Gc, GcCell};
+use gc::{self, Finalize, Gc, GcCell, Trace};
 
 use crate::scheme::{Error, Scheme, SchemeMut};
 
@@ -57,7 +58,62 @@ enum ContinuationData {
         environment: Environment,
         next_continuation: Continuation,
     },
+    EvalSequence {
+        seq: EvaluationSequenceBox,
+        next_continuation: Continuation,
+    },
     End,
+}
+
+enum NextExpression {
+    Next {
+        to_eval: Expression,
+        env: Environment,
+        next_eval_seq: EvaluationSequenceBox,
+    },
+    End(Scheme),
+}
+
+trait EvaluationSequence : Finalize + Trace {
+    fn next_expression(&self, prev: Scheme) -> NextExpression;
+}
+
+//#[derive(/*Finalize , Trace*/)]
+struct EvaluationSequenceBox(Box<dyn EvaluationSequence>);
+
+impl EvaluationSequenceBox {
+    fn id(&self) -> usize {
+        &*self.0 as *const dyn EvaluationSequence as *const () as usize
+    }
+}
+
+impl Finalize for EvaluationSequenceBox {
+    fn finalize(&self) {
+        self.0.finalize();
+    }
+}
+
+unsafe impl Trace for EvaluationSequenceBox {
+    gc::custom_trace!(this, mark(&*this.0));
+}
+
+impl EvaluationSequence for EvaluationSequenceBox {
+    fn next_expression(&self, prev: Scheme) -> NextExpression {
+        self.0.next_expression(prev)
+    }
+}
+
+impl fmt::Debug for EvaluationSequenceBox {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        // TODO: Figure out how to format a hex pointer in this
+        write!(f, "<continuation>")
+    }
+}
+
+impl PartialEq for EvaluationSequenceBox {
+    fn eq(&self, other: &Self) -> bool {
+        self.id() == other.id()
+    }
 }
 
 // derive(PartialEq)?
@@ -65,7 +121,7 @@ enum ContinuationData {
 pub struct Task(TaskEnum);
 
 // derive(PartialEq)?
-// derive(Finalize, Trace)?
+// derive(inalize, Trace)?
 #[derive(Clone, Debug, PartialEq)]
 enum TaskEnum {
     Eval {
@@ -131,6 +187,15 @@ impl Continuation {
         })
     }
 
+    fn eval_sequence(seq: EvaluationSequenceBox, next_continuation:
+        Continuation) -> Continuation {
+
+        Continuation::from_data(ContinuationData::EvalSequence {
+            seq,
+            next_continuation
+        })
+    }
+
     pub fn pass_value(&self, value: Scheme) -> Task {
         match *self.0 {
             ContinuationData::Application {ref values, ref expressions,
@@ -167,6 +232,18 @@ impl Continuation {
                 } else {
                     Task::eval(if_false.clone(), environment.clone(),
                         next_continuation.clone())
+                }
+            }
+            ContinuationData::EvalSequence {ref seq, ref next_continuation} => {
+                match seq.next_expression(value) {
+                    NextExpression::Next {to_eval, env, next_eval_seq} => {
+                        let new_continuation = Continuation::eval_sequence(
+                            next_eval_seq, next_continuation.clone());
+                        Task::eval(to_eval, env, new_continuation)
+                    }
+                    NextExpression::End(res) => {
+                        next_continuation.pass_value(res)
+                    }
                 }
             }
             ContinuationData::End => Task::done(value),
