@@ -133,12 +133,7 @@ impl Token {
 // strings, pipe notation for identifiers, verifying agreement with lexer
 // specifications in Section 7.1.1
 impl Lexer<'_> {
-    #[deprecated]
-    pub fn new(input_str: &str) -> Lexer {
-        Lexer::from_str(input_str)
-    }
-
-    fn from_str(input_str: &str) -> Lexer {
+    pub fn from_str(input_str: &str) -> Lexer {
         Lexer(input_str)
     }
 

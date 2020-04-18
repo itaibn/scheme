@@ -6,7 +6,7 @@ use self::lexer::{Lexer, Token};
 use std::mem;
 
 pub fn read(input: &str) -> Result<Scheme, &'static str> {
-    Reader::new(input).read_expr()
+    Reader::from_str(input).read_expr()
 }
 
 pub struct Reader<'a> {
@@ -16,9 +16,9 @@ pub struct Reader<'a> {
 }
 
 impl<'a> Reader<'a> {
-    pub fn new(input: &'a str) -> Self {
+    pub fn from_str(input: &'a str) -> Self {
         Reader {
-            lexer: Lexer::new(input),
+            lexer: Lexer::from_str(input),
             cur_token: None,
         }
     }
