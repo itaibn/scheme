@@ -676,6 +676,8 @@ fn test_simple_tokens() {
 fn test_boolean_double_consume() {
     test_lexer_fail("#true#t");
     test_lexer_fail("#false#f");
+    test_lexer_fail("#t#true");
+    test_lexer_fail("#f#false");
 }
 
 #[test]
