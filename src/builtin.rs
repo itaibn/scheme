@@ -53,6 +53,12 @@ fn set(operands: Vec<Expression>, env: Environment, c: Continuation) ->
     }
 }
 
+// TODO: include, include-ci, cond, case, and, or, when, unless, cond-expand,
+// let, let*, letrec, let-values, let*-values, begin, do, let, (lazy delay),
+// (lazy delay-force), (lazy force), (lazy promise?), (lazy make-promise),
+// make-parameter, parameterize, guard, quasiquote, (case-lambda case-lambda),
+// let-syntax, letrec-syntax, syntax-error 
+
 // A predicate which is false for any argument, and gives an error when given
 // zero or more than one arguments. Currently a few predicates alias to this
 // since I don't support the full set of Scheme types.
@@ -612,6 +618,13 @@ fn char_ci_le(args: Vec<Scheme>) -> Result<Scheme, Error> {
 fn char_ci_ge(args: Vec<Scheme>) -> Result<Scheme, Error> {
     comparison(args, convert_char_ci, char::ge)
 }
+
+// TODO: (char digit-value) char->integer integer->char (char char-upcase) (char
+// char-downcase) (char char-foldcase)
+
+// TODO: Section 6.7 Strings, 6.8 Vectors, 6.9 Bytevectors, 6.10 Control
+// features, 6.11 Exceptions 6.12 Environments and evaluation 6.13 Input and
+// output, 6.14 System interface
 
 fn call_with_current_continuation(args: Vec<Scheme>, env: Environment, ctx:
     Continuation) -> Result<Task, Error> {
