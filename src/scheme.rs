@@ -7,6 +7,7 @@ use std::iter::DoubleEndedIterator;
 
 use gc::{Gc, GcCell};
 
+use crate::port::Port;
 use crate::runtime::Procedure;
 
 // TODO: Rethink derive(PartialEq)
@@ -21,6 +22,7 @@ enum SchemeData {
     Symbol(String),
     Bytevector(Vec<u8>),
     Int(i64),
+    //Port(Port),
     String(Vec<char>),
     Vector(Vec<Scheme>),
 
@@ -400,5 +402,10 @@ mod test {
     #[test]
     fn test_symbol_eq() {
         comparison("(symbol=? 'a 'a)", Scheme::boolean(true));
+    }
+
+    #[test]
+    fn test_begin() {
+        comparison("(begin 1 2)", Scheme::int(2));
     }
 }
