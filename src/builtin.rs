@@ -53,6 +53,14 @@ fn set(operands: Vec<Expression>, env: Environment, c: Continuation) ->
     }
 }
 
+fn begin(operands: Vec<Expression>, env: Environment, c: Continuation) ->
+    Result<Task, Error> {
+
+    let (first, rest) = operands.split_first().ok_or(Error)?;
+    let cont = Continuation::begin(rest.to_vec(), env.clone(), c);
+    Ok(Task::eval(first.clone(), env, cont))
+}
+
 // TODO: include, include-ci, cond, case, and, or, when, unless, cond-expand,
 // let, let*, letrec, let-values, let*-values, begin, do, let, (lazy delay),
 // (lazy delay-force), (lazy force), (lazy promise?), (lazy make-promise),
@@ -653,6 +661,12 @@ pub fn initial_environment() -> Environment {
     }
 
     let pre_hashmap = hashmap! {
+        "lambda" => syntax(runtime::lambda),
+        "quote" => syntax(quote),
+        "if" => syntax(syntax_if),
+        "set!" => syntax(set),
+        "begin" => syntax(begin),
+
         "integer?" => simple(is_integer),
         // Temporary: Integers are the only numerical types, so all other type
         // predicates and some other numerical predicates are aliases of
@@ -722,11 +736,6 @@ pub fn initial_environment() -> Environment {
         "call-with-current-continuation" =>
             complex(call_with_current_continuation),
         "call/cc" => complex(call_with_current_continuation),
-
-        "lambda" => syntax(runtime::lambda),
-        "quote" => syntax(quote),
-        "if" => syntax(syntax_if),
-        "set!" => syntax(set)
     };
 
     let mut hashmap = std::collections::HashMap::new();

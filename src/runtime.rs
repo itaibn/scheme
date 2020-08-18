@@ -58,6 +58,11 @@ enum ContinuationData {
         environment: Environment,
         next_continuation: Continuation,
     },
+    Begin {
+        statements: Vec<Expression>,
+        environment: Environment,
+        next_continuation: Continuation,
+    },
     EvalSequence {
         seq: EvaluationSequenceBox,
         next_continuation: Continuation,
@@ -187,6 +192,16 @@ impl Continuation {
         })
     }
 
+    pub fn begin(statements: Vec<Expression>, environment: Environment,
+        next_continuation: Continuation) -> Continuation {
+
+        Continuation::from_data(ContinuationData::Begin {
+            statements,
+            environment,
+            next_continuation,
+        })
+    }
+
     fn eval_sequence(seq: EvaluationSequenceBox, next_continuation:
         Continuation) -> Continuation {
 
@@ -223,6 +238,7 @@ impl Continuation {
                     },
                 }
             },
+
             ContinuationData::IfThenElse {ref if_true, ref if_false, ref
                 environment, ref next_continuation} => {
                 
@@ -233,7 +249,25 @@ impl Continuation {
                     Task::eval(if_false.clone(), environment.clone(),
                         next_continuation.clone())
                 }
-            }
+            },
+
+            ContinuationData::Begin {ref statements, ref environment, ref
+                next_continuation} => {
+
+                if statements.len() > 1 {
+                    let new_statements = statements[1..].iter()
+                        .cloned().collect::<Vec<_>>();
+                    let new_continuation = Continuation::begin(new_statements,
+                        environment.clone(), next_continuation.clone());
+                    Task::eval(statements[0].clone(), environment.clone(),
+                        new_continuation)
+                } else {
+                    // Tail context
+                    Task::eval(statements[0].clone(), environment.clone(),
+                        next_continuation.clone())
+                }
+            },
+
             ContinuationData::EvalSequence {ref seq, ref next_continuation} => {
                 match seq.next_expression(value) {
                     NextExpression::Next {to_eval, env, next_eval_seq} => {
@@ -245,7 +279,8 @@ impl Continuation {
                         next_continuation.pass_value(res)
                     }
                 }
-            }
+            },
+
             ContinuationData::End => Task::done(value),
         }
     }
