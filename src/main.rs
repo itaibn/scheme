@@ -1,5 +1,6 @@
 
 extern crate either;
+#[macro_use]
 extern crate gc;
 #[macro_use]
 extern crate gc_derive;

@@ -1,6 +1,8 @@
 
 use std::ops::{Add, Sub, Neg, Mul, Div, Rem};
 
+use gc::Trace;
+
 use num::{BigRational, Complex, FromPrimitive, ToPrimitive};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Finalize)]
@@ -15,16 +17,25 @@ pub enum Number {
     Inexact(Complex<f64>)
 }
 
+unsafe impl Trace for Number {
+    unsafe_empty_trace!();
+}
+
 impl Number {
-    fn from_exact_complex(n: Complex<BigRational>) -> Number {
+    pub fn from_exact_complex(n: Complex<BigRational>) -> Number {
         Number::Exact(n)
     }
 
-    fn from_inexact_complex(n: Complex<f64>) -> Number {
+    pub fn from_inexact_complex(n: Complex<f64>) -> Number {
         Number::Inexact(n)
     }
 
-    fn to_exact_complex(&self) -> Complex<BigRational> {
+    // TODO: Incorporate in FromPrimitive
+    pub fn from_i64(n: i64) -> Number {
+        Number::Exact(Complex::from_i64(n).unwrap())
+    }
+
+    pub fn to_exact_complex(&self) -> Complex<BigRational> {
         match *self {
             Number::Exact(ref n) => n.clone(),
             Number::Inexact(ref n) => Complex {
@@ -34,7 +45,7 @@ impl Number {
         }
     }
 
-    fn to_inexact_complex(&self) -> Complex<f64> {
+    pub fn to_inexact_complex(&self) -> Complex<f64> {
         match *self {
             Number::Exact(ref n) => Complex {
                 re: n.re.to_f64().unwrap(),
@@ -44,30 +55,35 @@ impl Number {
         }
     }
 
-    fn to_exact(&self) -> Number {
+    // TODO: Incorporate in ToPrimitive
+    pub fn to_i64(&self) -> Option<i64> {
+        self.to_exact_complex().to_i64()
+    }
+
+    pub fn to_exact(&self) -> Number {
         Number::from_exact_complex(self.to_exact_complex())
     }
 
-    fn to_inexact(&self) -> Number {
+    pub fn to_inexact(&self) -> Number {
         Number::from_inexact_complex(self.to_inexact_complex())
     }
 
-    fn exactness(&self) -> Exactness {
+    pub fn exactness(&self) -> Exactness {
         match self {
             Number::Exact(_) => Exactness::Exact,
             Number::Inexact(_) => Exactness::Inexact,
         }
     }
 
-    fn is_exact(&self) -> bool {
+    pub fn is_exact(&self) -> bool {
         self.exactness() == Exactness::Exact
     }
 
-    fn is_inexact(&self) -> bool {
+    pub fn is_inexact(&self) -> bool {
         self.exactness() == Exactness::Inexact
     }
 
-    fn to_exactness(&self, e: Exactness) -> Number {
+    pub fn to_exactness(&self, e: Exactness) -> Number {
         match e {
             Exactness::Exact => self.to_exact(),
             Exactness::Inexact => self.to_inexact(),

@@ -7,6 +7,7 @@ use std::iter::DoubleEndedIterator;
 
 use gc::{Gc, GcCell};
 
+use crate::number::Number;
 use crate::port::Port;
 use crate::runtime::Procedure;
 
@@ -21,7 +22,7 @@ enum SchemeData {
     Procedure(Procedure),
     Symbol(String),
     Bytevector(Vec<u8>),
-    Int(i64),
+    Number(Number),
     //Port(Port),
     String(Vec<char>),
     Vector(Vec<Scheme>),
@@ -151,12 +152,12 @@ impl Scheme {
     }
 
     pub fn int(n: i64) -> Scheme {
-        Scheme::from_data(SchemeData::Int(n))
+        Scheme::from_data(SchemeData::Number(Number::from_i64(n)))
     }
 
     pub fn as_int(&self) -> Option<i64> {
-        if let SchemeData::Int(n) = *self.0 {
-            Some(n)
+        if let SchemeData::Number(ref n) = *self.0 {
+            n.to_i64()
         } else {
             None
         }
