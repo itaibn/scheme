@@ -299,7 +299,7 @@ impl SchemeMut {
         SchemeMut(GcCell::new(x))
     }
 
-    pub fn replace(&self, y: Scheme) {
+    pub fn set(&self, y: Scheme) {
         *self.0.borrow_mut() = y;
     }
 }
@@ -359,8 +359,13 @@ mod test {
 
     #[test]
     fn test_quote() {
-        comparison("''foo", Scheme::cons(Scheme::symbol("quote".to_string()),
-            Scheme::cons(Scheme::symbol("foo".to_string()), Scheme::null())));
+        comparison("''foo", Scheme::cons_imm(
+            Scheme::symbol("quote".to_string()),
+            Scheme::cons_imm(
+                Scheme::symbol("foo".to_string()),
+                Scheme::null()
+            )
+        ));
     }
 
     #[test]
@@ -380,7 +385,7 @@ mod test {
 
     #[test]
     fn test_pair_syntax() {
-        comparison("'(a . b)", Scheme::cons(Scheme::symbol("a"),
+        comparison("'(a . b)", Scheme::cons_imm(Scheme::symbol("a"),
             Scheme::symbol("b")));
     }
 

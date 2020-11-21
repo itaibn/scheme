@@ -466,7 +466,7 @@ impl Procedure {
             ProcEnum::Set(ref var) => {
                 let loc = env.lookup(var).ok_or(Error)?;
                 if args.len() == 1 {
-                    loc.replace(args[0].clone());
+                    loc.set(args[0].clone());
                     Ok(ctx.pass_value(Scheme::unspecified()))
                 } else {
                     Err(Error)

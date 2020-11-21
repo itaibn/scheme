@@ -63,8 +63,8 @@ impl<'a> Reader<'a> {
             Some(Token::LeftBytevector) => self.read_bytevector(),
             Some(Token::PrefixOp(op)) => {
                 let operand = self.read_expr()?;
-                Ok(Scheme::cons(Scheme::symbol(op.to_string()),
-                    Scheme::cons(operand, Scheme::null())))
+                Ok(Scheme::cons_imm(Scheme::symbol(op.to_string()),
+                    Scheme::cons_imm(operand, Scheme::null())))
             }
             _ => Err("Invalid expression"),
         }
@@ -86,7 +86,7 @@ impl<'a> Reader<'a> {
         }
 
         for element in list.into_iter().rev() {
-            list_expr = Scheme::cons(element, list_expr);
+            list_expr = Scheme::cons_imm(element, list_expr);
         }
 
         if self.read_token()? == Some(Token::RightParen) {

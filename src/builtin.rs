@@ -354,7 +354,7 @@ fn cdr(args: Vec<Scheme>) -> Result<Scheme, Error> {
 fn set_car(args: Vec<Scheme>) -> Result<Scheme, Error> {
     if args.len() == 2 {
         let (car, _) = args[0].as_pair_mut().ok_or(Error)?;
-        car.replace(args[1].clone());
+        car.set(args[1].clone());
         Ok(Scheme::unspecified())
     } else {
         Err(Error)
@@ -364,7 +364,7 @@ fn set_car(args: Vec<Scheme>) -> Result<Scheme, Error> {
 fn set_cdr(args: Vec<Scheme>) -> Result<Scheme, Error> {
     if args.len() == 2 {
         let (_, cdr) = args[0].as_pair_mut().ok_or(Error)?;
-        cdr.replace(args[1].clone());
+        cdr.set(args[1].clone());
         Ok(Scheme::unspecified())
     } else {
         Err(Error)
