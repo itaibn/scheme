@@ -1,24 +1,24 @@
 
 use std::ops::{Add, Sub, Neg, Mul, Div, Rem};
 
-use gc::Trace;
+use gc;
 
 use num::{BigRational, Complex, FromPrimitive, ToPrimitive};
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Finalize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, gc::Finalize)]
 pub enum Exactness {
     Exact,
     Inexact
 }
 
-#[derive(Clone, Debug, PartialEq, Finalize)]
+#[derive(Clone, Debug, PartialEq, gc::Finalize)]
 pub enum Number {
     Exact(Complex<BigRational>),
     Inexact(Complex<f64>)
 }
 
-unsafe impl Trace for Number {
-    unsafe_empty_trace!();
+unsafe impl gc::Trace for Number {
+    gc::unsafe_empty_trace!();
 }
 
 impl Number {

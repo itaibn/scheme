@@ -1,12 +1,7 @@
 
 extern crate either;
-#[macro_use]
 extern crate gc;
-#[macro_use]
-extern crate gc_derive;
-#[macro_use]
 extern crate lazy_static;
-#[macro_use]
 extern crate maplit;
 extern crate num;
 extern crate regex;

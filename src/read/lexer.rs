@@ -3,6 +3,7 @@
 
 use crate::scheme::Scheme;
 
+use lazy_static::lazy_static;
 use num::{self, BigRational, FromPrimitive, ToPrimitive};
 use regex::{Captures, Match, Regex};
 

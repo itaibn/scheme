@@ -1,6 +1,8 @@
 
 use std::cmp;
 
+use maplit::hashmap;
+
 use crate::runtime::{self,
     Continuation,
     Environment,

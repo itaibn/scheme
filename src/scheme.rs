@@ -5,14 +5,14 @@ use std::borrow;
 use std::fmt;
 use std::iter::DoubleEndedIterator;
 
-use gc::{Gc, GcCell};
+use gc::{self, Gc, GcCell};
 
 use crate::number::Number;
 use crate::port::Port;
 use crate::runtime::Procedure;
 
 // TODO: Rethink derive(PartialEq)
-#[derive(Clone, Debug, Finalize, PartialEq, Trace)]
+#[derive(Clone, Debug, gc::Finalize, PartialEq, gc::Trace)]
 enum SchemeData {
     Boolean(bool),
     Character(char),
@@ -33,13 +33,13 @@ enum SchemeData {
 /// An immutable reference to a Scheme value. In R7RS language (cf. Section
 /// 3.4), this stands for a location whenever the location is stored in an
 /// immutable object.
-#[derive(Clone, Debug, Finalize, PartialEq, Trace)]
+#[derive(Clone, Debug, PartialEq, gc::Finalize, gc::Trace)]
 pub struct Scheme(Gc<SchemeData>);
 
 /// A mutable reference to a Scheme value. In R7RS language (cf. Section 3.4),
 /// this stands for a location whenever the location is stored in a mutable
 /// object. (TODO: Is this type actually necessary?)
-#[derive(Clone, Debug, Finalize, PartialEq, Trace)]
+#[derive(Clone, Debug, PartialEq, gc::Finalize, gc::Trace)]
 pub struct SchemeMut(GcCell<Scheme>);
 // Note: I believe the above is used incorrect, especially with respect to
 // cloning. TODO: Review uses of SchemeMut.
