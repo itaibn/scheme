@@ -235,7 +235,7 @@ impl Scheme {
 }
 
 impl fmt::Display for Scheme {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if let Some((a, b)) = self.as_pair() {
             let mut head = b;
             let mut items = vec![a];

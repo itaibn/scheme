@@ -1,11 +1,4 @@
 
-extern crate either;
-extern crate gc;
-extern crate lazy_static;
-extern crate maplit;
-extern crate num;
-extern crate regex;
-
 mod builtin;
 mod number;
 mod port;

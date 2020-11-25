@@ -109,7 +109,7 @@ impl EvaluationSequence for EvaluationSequenceBox {
 }
 
 impl fmt::Debug for EvaluationSequenceBox {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         // TODO: Figure out how to format a hex pointer in this
         write!(f, "<continuation>")
     }
