@@ -84,7 +84,7 @@ fn is_scheme_identifier_initial(c: char) -> bool {
 
 /// Match <subsequence> pattern. Unicode not supported.
 fn is_scheme_identifier_subsequent(c: char) -> bool {
-    is_scheme_identifier_subsequent(c) || c.is_digit(10) || "+-.@".contains(c)
+    is_scheme_identifier_initial(c) || c.is_digit(10) || "+-.@".contains(c)
 }
 
 impl Number {
