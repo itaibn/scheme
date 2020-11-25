@@ -8,7 +8,7 @@ use std::iter::DoubleEndedIterator;
 use gc::{self, Gc, GcCell};
 
 use crate::number::Number;
-use crate::port::Port;
+
 use crate::runtime::Procedure;
 
 // TODO: Rethink derive(PartialEq)
