@@ -401,11 +401,8 @@ impl Lexer<'_> {
             possible_ident = false;
         }
 
-        // TEMP
-        println!("done prefixes");
-
         while !self.is_delimited() {
-            match dbg!(self.get_char()) {
+            match self.get_char() {
                 Some(d) if d.is_digit(base) => {
                     has_digit = true;
                     if has_dot && float_mantissa.is_none() {
@@ -414,9 +411,6 @@ impl Lexer<'_> {
                     }
                     cur = (base as i64)*cur + (d.to_digit(base).unwrap() as
                         i64);
-                    // TEMP
-                    println!("d {} has_dot {} exponent {}", d, has_dot,
-                        exponent);
                 },
                 Some('+') => {
                     if has_digit || negative.is_some() {
@@ -432,7 +426,7 @@ impl Lexer<'_> {
                 },
                 Some('.') => {
                     if base != 10 || has_dot {
-                        return dbg!(None);
+                        return None;
                     } else {
                         has_dot = true;
                     }
@@ -454,9 +448,6 @@ impl Lexer<'_> {
             }
         }
 
-        // TEMP
-        println!("end parse loop");
-
         if let Some(n) = float_mantissa {
             assert!(base == 10);
             if negative == Some(true) {
@@ -466,9 +457,6 @@ impl Lexer<'_> {
             exponent += cur;
             cur = n;
         }
-        // TEMP
-        println!("processed mantissa/exponent exponent = {} mantissa = {}",
-            exponent, cur);
 
         if !has_digit & possible_ident {
             if has_dot {return None;} // This is incorrect
@@ -481,38 +469,26 @@ impl Lexer<'_> {
             }
         }
 
-        // TEMP
-        println!("checked ident");
-
         if negative == Some(true) {
             cur = -cur;
         }
 
-        // TEMP
-        println!("checked checked sign");
-
         let multiplier = if exponent >= 0 {
-            num::checked_pow(dbg!(BigRational::from_u32(base)?),
+            num::checked_pow(BigRational::from_u32(base)?,
                 exponent.to_usize()?)?
         } else {
-            num::checked_pow(dbg!(BigRational::from_u32(base)?.recip()),
+            num::checked_pow(BigRational::from_u32(base)?.recip(),
                 (-exponent).to_usize()?)?
         };
 
-        // TEMP
-        println!("multiplier = {:?}", multiplier);
-
         let value = BigRational::from_i64(cur)? * multiplier;
-
-        // TEMP
-        println!("value = {:?}", value);
 
         let exactness = exactness.unwrap_or(
             if has_dot || float_mantissa.is_some()
                 {Exactness::Inexact}
                 else {Exactness::Exact});
 
-        dbg!(Some(Token::Number(Number {exactness, value})))
+        Some(Token::Number(Number {exactness, value}))
     }
 
     fn get_string_literal(&mut self) -> Option<Token> {
