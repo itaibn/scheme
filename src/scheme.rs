@@ -417,4 +417,19 @@ mod test {
     fn test_begin() {
         comparison("(begin 1 2)", Scheme::int(2));
     }
+
+    #[test]
+    fn test_mut_0() {
+        comparison("((lambda (x) (begin (set! x 1) x)) 2)", Scheme::int(2));
+    }
+
+    #[test]
+    fn test_mut_1() {
+        comparison("((lambda (x)
+            (begin
+                (set-car! x 1)
+                (set-cdr! x 1)
+                x
+            (cons '() '()))", Scheme::cons(Scheme::int(1), Scheme::int(1)));
+    }
 }
