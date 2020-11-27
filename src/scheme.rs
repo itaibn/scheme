@@ -6,6 +6,7 @@ use std::fmt;
 use std::iter::DoubleEndedIterator;
 
 use gc::{self, Gc, GcCell};
+use num::FromPrimitive;
 
 use crate::number::Number;
 
@@ -152,7 +153,7 @@ impl Scheme {
     }
 
     pub fn int(n: i64) -> Scheme {
-        Scheme::from_data(SchemeData::Number(Number::from_i64(n)))
+        Scheme::from_data(SchemeData::Number(Number::from_i64(n).unwrap()))
     }
 
     pub fn as_int(&self) -> Option<i64> {

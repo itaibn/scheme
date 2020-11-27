@@ -30,11 +30,6 @@ impl Number {
         Number::Inexact(n)
     }
 
-    // TODO: Incorporate in FromPrimitive
-    pub fn from_i64(n: i64) -> Number {
-        Number::Exact(Complex::from_i64(n).unwrap())
-    }
-
     pub fn to_exact_complex(&self) -> Complex<BigRational> {
         match *self {
             Number::Exact(ref n) => n.clone(),
@@ -89,6 +84,49 @@ impl Number {
             Exactness::Inexact => self.to_inexact(),
         }
     }
+}
+
+impl FromPrimitive for Number {
+    fn from_i64(n: i64) -> Option<Number> {
+        Some(Number::from_exact_complex(Complex::<BigRational>::from_i64(n)?))
+    }
+
+    fn from_u64(n: u64) -> Option<Number> {
+        Some(Number::from_exact_complex(Complex::<BigRational>::from_u64(n)?))
+    }
+
+    fn from_f64(n: f64) -> Option<Number> {
+        Some(Number::from_inexact_complex(Complex::<f64>::from_f64(n)?))
+    }
+}
+
+impl ToPrimitive for Number {
+    fn to_i64(&self) -> Option<i64> {
+        match *self {
+            Number::Exact(ref n) => n.to_i64(),
+            Number::Inexact(ref n) => n.to_i64(),
+        }
+    }
+
+    fn to_u64(&self) -> Option<u64> {
+        match *self {
+            Number::Exact(ref n) => n.to_u64(),
+            Number::Inexact(ref n) => n.to_u64(),
+        }
+    }
+
+    fn to_f64(&self) -> Option<f64> {
+        match *self {
+            Number::Exact(ref n) => n.to_f64(),
+            Number::Inexact(ref n) => n.to_f64(),
+        }
+    }
+}
+
+#[test]
+fn test_number_from_f32() {
+    assert!(Number::from_f32(0.1).unwrap().is_inexact());
+    assert_eq!(Number::from_f32(0.1), Number::from_f64(0.1f32 as f64));
 }
 
 macro_rules! impl_binary_ops {
