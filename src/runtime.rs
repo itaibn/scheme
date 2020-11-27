@@ -34,7 +34,7 @@ pub struct EnvironmentData {
 // pub?
 #[derive(Clone, Debug, Finalize, PartialEq, Trace)]
 pub enum Binding {
-    Variable(SchemeMut),
+    Variable(Gc<SchemeMut>),
     Syntax(BuiltinSyntax),
 }
 
@@ -357,7 +357,7 @@ impl Task {
 
                 if let Some(s) = expr.as_symbol() {
                     if let Some(res) = env.lookup(&s) {
-                        Ok(Left(cont.pass_value(res.into())))
+                        Ok(Left(cont.pass_value(res.get())))
                     } else {
                         Err(Error)
                     }
@@ -493,7 +493,7 @@ impl Expression {
 
 impl Binding {
     pub fn variable(x: Scheme) -> Binding {
-        Binding::Variable(SchemeMut::new(x))
+        Binding::Variable(Gc::new(SchemeMut::new(x)))
     }
 }
 
@@ -510,7 +510,7 @@ impl Environment {
         })
     }
 
-    fn lookup(&self, variable: &str) -> Option<SchemeMut> {
+    fn lookup(&self, variable: &str) -> Option<Gc<SchemeMut>> {
         match self.lookup_binding(variable) {
             Some(Binding::Variable(ref val)) => Some(val.clone()),
             _ => None,
@@ -527,7 +527,7 @@ impl Environment {
     // pub?
     pub fn insert(&self, variable: &str, val: Scheme) {
         self.0.borrow_mut().local.insert(variable.to_string(),
-            Binding::Variable(SchemeMut::new(val)));
+            Binding::variable(val));
     }
 
     fn make_child(&self) -> Environment {

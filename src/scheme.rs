@@ -13,7 +13,7 @@ use crate::number::Number;
 use crate::runtime::Procedure;
 
 // TODO: Rethink derive(PartialEq)
-#[derive(Clone, Debug, gc::Finalize, PartialEq, gc::Trace)]
+#[derive(Debug, gc::Finalize, PartialEq, gc::Trace)]
 enum SchemeData {
     Boolean(bool),
     Character(char),
@@ -26,7 +26,7 @@ enum SchemeData {
     Number(Number),
     //Port(Port),
     String(Vec<char>),
-    Vector(Vec<Scheme>),
+    Vector(Vec<SchemeMut>),
 
     Unspecified,
 }
@@ -40,7 +40,7 @@ pub struct Scheme(Gc<SchemeData>);
 /// A mutable reference to a Scheme value. In R7RS language (cf. Section 3.4),
 /// this stands for a location whenever the location is stored in a mutable
 /// object. (TODO: Is this type actually necessary?)
-#[derive(Clone, Debug, PartialEq, gc::Finalize, gc::Trace)]
+#[derive(Debug, PartialEq, gc::Finalize, gc::Trace)]
 pub struct SchemeMut(GcCell<Scheme>);
 // Note: I believe the above is used incorrect, especially with respect to
 // cloning. TODO: Review uses of SchemeMut.
@@ -101,16 +101,16 @@ impl Scheme {
     pub fn as_pair(&self) -> Option<(Scheme, Scheme)> {
         //self.as_pair_mut().map(|(x, y)| (x.into(), y.into()))
         match *self.0 {
-            SchemeData::Cons(ref x, ref y) => Some((x.clone().into(),
-                y.clone().into())),
+            SchemeData::Cons(ref x, ref y) => Some((x.clone().get(),
+                y.clone().get())),
             SchemeData::ConsImm(ref x, ref y) => Some((x.clone(), y.clone())),
             _ => None,
         }
     }
 
-    pub fn as_pair_mut(&self) -> Option<(SchemeMut, SchemeMut)> {
+    pub fn as_pair_mut(&self) -> Option<(&SchemeMut, &SchemeMut)> {
         if let SchemeData::Cons(ref x, ref y) = *self.0 {
-            Some((x.clone(), y.clone()))
+            Some((x, y))
         } else {
             None
         }
@@ -175,12 +175,14 @@ impl Scheme {
             None
         }
     }
-
+    
+    // TODO: Revamp interface so no copy necessary
     pub fn vector(vec: Vec<Scheme>) -> Scheme {
-        Scheme::from_data(SchemeData::Vector(vec))
+        let copy = vec.into_iter().map(|x| SchemeMut::new(x)).collect();
+        Scheme::from_data(SchemeData::Vector(copy))
     }
 
-    pub fn as_vector(&self) -> Option<&[Scheme]> {
+    pub fn as_vector(&self) -> Option<&[SchemeMut]> {
         if let SchemeData::Vector(ref vec) = *self.0 {
             Some(&*vec)
         } else {
@@ -277,7 +279,7 @@ impl fmt::Display for Scheme {
         } else if let Some(vec) = self.as_vector() {
             write!(f, "#(")?;
             for (i, x) in vec.iter().enumerate() {
-                write!(f, "{}{}", x,
+                write!(f, "{}{}", x.get(),
                     if i < vec.len()-1 {' '} else {')'})?;
             }
             Ok(())
@@ -297,6 +299,8 @@ impl fmt::Display for Scheme {
     }
 }
 
+// TODO: Do I want to implement Display for SchemeMut?
+
 impl SchemeMut {
     pub fn new(x: Scheme) -> SchemeMut {
         SchemeMut(GcCell::new(x))
@@ -305,11 +309,15 @@ impl SchemeMut {
     pub fn set(&self, y: Scheme) {
         *self.0.borrow_mut() = y;
     }
+
+    pub fn get(&self) -> Scheme {
+        self.0.borrow().clone()
+    }
 }
 
 impl From<SchemeMut> for Scheme {
     fn from(x: SchemeMut) -> Scheme {
-        x.0.borrow().clone()
+        x.get()
     }
 }
 
@@ -420,7 +428,7 @@ mod test {
 
     #[test]
     fn test_mut_0() {
-        comparison("((lambda (x) (begin (set! x 1) x)) 2)", Scheme::int(2));
+        comparison("((lambda (x) (begin (set! x 1) x)) 2)", Scheme::int(1));
     }
 
     #[test]
@@ -429,7 +437,19 @@ mod test {
             (begin
                 (set-car! x 1)
                 (set-cdr! x 1)
-                x
+                x))
             (cons '() '()))", Scheme::cons(Scheme::int(1), Scheme::int(1)));
+    }
+
+    #[test]
+    fn test_mut_2() {
+        comparison("
+            ((lambda (x)
+                (begin
+                    ((lambda ()
+                        (set! x 2)))
+                    x))
+                1)
+        ", Scheme::int(2));
     }
 }
