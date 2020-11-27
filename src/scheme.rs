@@ -191,6 +191,8 @@ impl Scheme {
         Scheme::from_data(SchemeData::Unspecified)
     }
 
+    /// Determine whether the Scheme value is a literal i.e. whether it
+    /// evaluates to itself.
     pub fn is_literal(&self) -> bool {
            self.as_boolean().is_some()
         || self.as_int().is_some()
