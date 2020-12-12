@@ -550,7 +550,6 @@ impl<'lexer> Lexer<'lexer> {
                         }
                     )
             );
-            dbg!(decimal("1.234e2"));
             let ureal = alt((map(uinteger, |n|
                 Number {
                     exactness: Exactness::Exact,
