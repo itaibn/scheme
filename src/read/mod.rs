@@ -47,7 +47,7 @@ impl<'a> Reader<'a> {
     /// Output the next token and remove it from the queue
     pub fn read_token(&mut self) -> Result<Option<Token>, &'static str> {
         self.fill_cur_token()?;
-        dbg!(Ok(mem::replace(&mut self.cur_token, None)))
+        Ok(mem::replace(&mut self.cur_token, None))
     }
 
     /// Output the next expression and remove all its tokens from the queue
