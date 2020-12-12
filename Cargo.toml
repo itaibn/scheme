@@ -9,6 +9,7 @@ either = "1.5.0"
 gc = {version = "0.3.6", features = ["derive"]}
 lazy_static = "1.0.0"
 maplit = "1.0.1"
-#nom = {version = "3.2.0", features = ["regexp"]}
+nom = {version = "6.0.1", features = ["regexp"]}
+#nom = "6.0.1"
 num = "0.3.1"
 regex = "0.2"
