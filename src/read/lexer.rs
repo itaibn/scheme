@@ -499,10 +499,10 @@ impl<'lexer> Lexer<'lexer> {
             bytes::complete::tag,
             character::complete::{one_of, oct_digit1, digit1, hex_digit1},
             combinator::{opt, map, map_opt, flat_map, success},
-            regexp::str::re_find,
+            regexp::str::re_capture,
             sequence::{preceded, pair},
         };
-        use num::{BigInt, Num};
+        use num::{BigInt, Num, Zero};
 
         // radix and exactness written as functions so they can be copied in
         // prefix.
@@ -538,30 +538,84 @@ impl<'lexer> Lexer<'lexer> {
                 16 => hex_digit1(inp),
                 _ => unreachable!(),
             };
-            let uinteger = map_opt(uinteger_raw, move |digits|
-                num::BigInt::from_str_radix(digits, base).ok());
-            let mut decimal = map_opt(re_find(nom::regex::Regex::new(
-                    r"([0-9]+(\.[0-9]*)?|\.[0-9]+)([eE][+-]?[0-9]+)?"
+            let mut uinteger = map_opt(uinteger_raw, move |digits|
+                BigInt::from_str_radix(digits, base).ok());
+            /*
+            let mut decimal = map_opt(re_capture(nom::regex::regex::new(
+                    r"^([0-9]*)(\.([0-9])*)?([ee]([+-]?[0-9]+))?"
                 ).unwrap()), |s| f64::from_str(s).ok()
-                    .and_then(BigRational::from_f64).map(|n|
-                        Number {
-                            exactness: Exactness::Inexact,
+                    .and_then(bigrational::from_f64).map(|n|
+                        number {
+                            exactness: exactness::inexact,
                             value: n
                         }
                     )
             );
-            let ureal = alt((map(uinteger, |n|
-                Number {
-                    exactness: Exactness::Exact,
-                    value: n.into(),
-                }),
-                decimal));
-            let sign = map(opt(one_of("+-")), |s| match s {
+            */
+            let float_re = nom::regex::Regex::new(
+                r"^([0-9]*)(\.([0-9]*))?([eE]([+-]?[0-9]+))?").unwrap();
+
+            // This is really messy.
+            let mut decimal = map_opt(re_capture(float_re.clone()), move |c_raw|
+            {
+                    let c = float_re.captures(c_raw[0]).unwrap();
+                    if // This condition is wrong
+                        base != 10 ||
+                        /*
+                        dbg!(c.get(1).map_or(true, |s| s.as_str().len() == 0)) &&
+                        dbg!(c.get(3).map_or(true, |s| s.as_str().len() == 0)) &&
+                        dbg!(c.get(4).is_none())
+                        */
+                        c.get(1).unwrap().as_str().len() == 0 &&
+                        c.get(3).map_or(true, |m| m.as_str().len() == 0) ||
+                        c.get(2).is_none() && c.get(4).is_none()
+                    {
+                        None
+                    } else {
+                        let integral_str = c.get(1).unwrap().as_str();
+                        /*
+                        let mut integral = dbg!(c.get(1)).map_or(BigInt::zero(),
+                            |s| BigInt::from_str_radix(dbg!(s.as_str()),
+                                10).unwrap());
+                        */
+                        let mut integral = if integral_str.len() > 0
+                            {BigInt::from_str_radix(integral_str, 10).unwrap()}
+                            else {BigInt::zero()};
+                        let fractional = c.get(3).map_or(
+                            BigInt::zero(),
+                            |s| if s.as_str().len() > 0 {
+                                BigInt::from_str_radix(s.as_str(), 10).unwrap()}
+                                else {BigInt::zero()}
+                        );
+                        let frac_len = c.get(3).map_or(0, |s| s.end() -
+                            s.start());
+                        integral = integral * BigInt::from_u32(10)?
+                            .pow(frac_len.to_u32()?) + fractional;
+                        let exponent = c.get(5).map_or(0,
+                            |s| isize::from_str(s.as_str()).unwrap());
+                        let total_exponent = exponent.to_i32()?
+                            .checked_sub(frac_len.to_i32()?)?;
+                        let rational = BigRational::from_integer(integral) *
+                            BigRational::from_u32(10)?.pow(total_exponent);
+                        Some(Number {exactness: Exactness::Inexact, value:
+                            rational})
+                    }
+            });
+            //dbg!(decimal(" 20"));
+            let ureal = alt((
+                decimal,
+                map(uinteger,
+                    |n| Number {
+                        exactness: Exactness::Exact,
+                        value: n.into(),
+                    }),
+            ));
+            let mut sign = map(opt(one_of("+-")), |s| match s {
                 Some('+') | None => 1i32,
                 Some('-') => -1i32,
                 _ => unreachable!(),
             });
-            let real = map(pair(sign, ureal), |(s, mut n)| {
+            let mut real = map(pair(sign, ureal), |(s, mut n)| {
                 n.value = n.value * BigRational::from_integer(s.into());
                 n
             });
@@ -572,8 +626,15 @@ impl<'lexer> Lexer<'lexer> {
             })
         });
 
+        // For compatibility with old version of number lexer incorporate sign
+        // identifier
+        let mut num_or_sign_id = alt((
+            num, 
+            map(one_of("+-"), (|s| Token::Identifier(s.to_string()))),
+        ));
+
         // Tell type inference we use default error type
-        let ires: nom::IResult<&str, Token> = num(self.0);
+        let ires: nom::IResult<&str, Token> = num_or_sign_id(self.0);
         let (rest, tok) = ires.ok()?;
         self.0 = rest;
         Some(tok)
@@ -684,7 +745,7 @@ fn is_ident_subsequent(c: char) -> bool {
 
 #[cfg(test)]
 fn test_lexer(inp: &str, out: Token) {
-    assert_eq!(Lexer::from_str(dbg!(inp)).get_token(), Some(out));
+    assert_eq!(Lexer::from_str(inp).get_token(), Some(out));
 }
 
 #[cfg(test)]
@@ -812,6 +873,7 @@ use self::Exactness::*;
 fn test_simple_int() {
     test_lexer("13", Token::from_i64(13));
     test_lexer("-4", Token::from_i64(-4));
+    test_lexer("+ 20", Token::Identifier("+".to_string()));
 }
 
 #[test]
