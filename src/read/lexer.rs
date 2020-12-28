@@ -499,7 +499,7 @@ impl<'lexer> Lexer<'lexer> {
             bytes::complete::tag,
             character::complete::{one_of, oct_digit1, digit1, hex_digit1},
             combinator::{opt, map, map_opt, flat_map, success},
-            regexp::str::re_capture,
+            regexp::str::{re_match, re_capture},
             sequence::{preceded, pair},
         };
         use num::{BigInt, Num, Zero};
@@ -532,7 +532,7 @@ impl<'lexer> Lexer<'lexer> {
 
         let mut num = flat_map(prefix, |(base, exactness)| {
             let uinteger_raw = move |inp: &'lexer str| match base {
-                2 => unimplemented!(),
+                2 => re_match(nom::regex::Regex::new("[01]+").unwrap())(inp),
                 8 => oct_digit1(inp),
                 10 => digit1(inp),
                 16 => hex_digit1(inp),
@@ -882,7 +882,7 @@ fn test_radix_int() {
     test_lexer("#d123", Token::from_i64(123));
     test_lexer("#x123", Token::from_i64(0x123));
     test_lexer("#o123", Token::from_i64(0o123));
-    //test_lexer("#b101", Token::from_i64(0b101));
+    test_lexer("#b101", Token::from_i64(0b101));
 }
 
 #[test]
