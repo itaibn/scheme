@@ -478,7 +478,7 @@ impl<'lexer> Lexer<'lexer> {
         let mut string = Vec::new();
         while let Some(c) = self.get_char() {
             if c == '"' {
-                break;
+                return Some(Token::String(string));
             }
             if c == '\\' {
                 // TODO: Make case-insensitive
@@ -540,7 +540,8 @@ impl<'lexer> Lexer<'lexer> {
                 string.push(c);
             }
         }
-        Some(Token::String(string))
+        // Loop ends without encountering end quote
+        None
     }
 }
 
@@ -636,6 +637,9 @@ fn test_character() {
     test_lexer(r"#\⅋", Token::Character('⅋'));
     // Unsure of this one
     test_lexer(r"#\x", Token::Character('x'));
+    // Test that characters require a delimiter
+    test_lexer_fail(r"#\f12");
+    test_lexer_fail(r"#\uident");
 }
 
 #[ignore]
@@ -669,6 +673,38 @@ fn test_character_name() {
 fn test_string() {
     test_lexer("\"\"", Token::from_str(""));
     test_lexer("\"Hello, world!\"", Token::from_str("Hello, world!"));
+    test_lexer_fail("\"xx");
+}
+
+#[ignore]
+#[test]
+fn test_string_escapes() {
+    test_lexer("\"x\\\"x\"", Token::from_str("x\"x"));
+    test_lexer_fail("\"\\\"");
+    test_lexer("\"\\\\\"", Token::from_str("\\"));
+    test_lexer("\"\\au\"", Token::from_str("\u{7}u"));
+    test_lexer("\"s\\bs\"", Token::from_str("s\u{8}s"));
+    test_lexer("\"4\\tt\"", Token::from_str("4\tt"));
+    test_lexer("\" \\n\\n\"", Token::from_str(" \n\n"));
+    test_lexer("\"\\r\\n\"", Token::from_str("\r\n"));
+    test_lexer("\"\\||\"", Token::from_str("||"));
+    test_lexer("\"a\\\nb\"", Token::from_str("ab"));
+    test_lexer("\"a\\ \n\tb\"", Token::from_str("ab"));
+    test_lexer("\"a\\\t \r  b\"", Token::from_str("ab"));
+    test_lexer("\"a\\\t \r\n  b\"", Token::from_str("ab"));
+    test_lexer("\"a\\ \n\nb\"", Token::from_str("a\nb"));
+}
+
+#[test]
+// Any newline corresponds in the string literal corresponds to a '\n' in the
+// corresponding string, see R7RS p. 46.
+fn test_string_newline() {
+    test_lexer("\"a\\ \r\rb\"", Token::from_str("a\nb"));
+    test_lexer("\"a\\ \r\r\nb\"", Token::from_str("a\nb"));
+    test_lexer("\"a\\ \n\r\nb\"", Token::from_str("a\nb"));
+    test_lexer("\"\n\"", Token::from_str("\n"));
+    test_lexer("\"\r\"", Token::from_str("\n"));
+    test_lexer("\"\r\n\"", Token::from_str("\n"));
 }
 
 #[cfg(test)]
