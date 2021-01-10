@@ -5,14 +5,16 @@ use std::str::FromStr;
 
 use lazy_static::lazy_static;
 use nom::{
+    self,
     IResult,
     branch::alt,
-    bytes::complete::{is_not, tag},
-    character::complete::{multispace1, one_of, oct_digit1, digit1, hex_digit1},
-    combinator::{opt, map, map_opt, flat_map, recognize, success},
-    multi::many0,
+    bytes::complete::{tag, take_till, take_while},
+    character::complete::{multispace1, none_of, one_of, oct_digit1, digit1,
+        hex_digit1},
+    combinator::{opt, map, map_opt, flat_map, recognize, value, success},
+    multi::{fold_many0, many0},
     regexp::str::{re_find, re_capture},
-    sequence::{preceded, pair, tuple},
+    sequence::{delimited, preceded, pair, tuple},
 };
 use num::{self, BigRational, FromPrimitive, ToPrimitive};
 use regex::{Captures, Match, Regex};
@@ -308,7 +310,7 @@ impl<'lexer> Lexer<'lexer> {
 
         // A custom version of not_line_ending necessary since the nom version
         // doesn't recognize a lone '\r' (cf. nom issue #1273)
-        let not_line_ending = is_not("\r\n");
+        let not_line_ending = take_till(|c| c == '\n' || c == '\r');
 
         // Strictly speaking this differs from the standard which would
         // recognize ";<line>\r\n" as a single <comment>, whereas with this
@@ -473,75 +475,45 @@ impl<'lexer> Lexer<'lexer> {
     }
 
     fn get_string_literal(&mut self) -> Option<Token> {
-        assert!(self.get_char() == Some('"'), "This method only works when the \
-            first char is '\"'");
-        let mut string = Vec::new();
-        while let Some(c) = self.get_char() {
-            if c == '"' {
-                return Some(Token::String(string));
-            }
-            if c == '\\' {
-                // TODO: Make case-insensitive
-                match self.get_char() {
-                    Some('a') => string.push('\u{7}'),
-                    Some('b') => string.push('\u{8}'),
-                    Some('t') => string.push('\u{9}'),
-                    Some('n') => string.push('\u{a}'),
-                    Some('r') => string.push('\u{d}'),
-                    Some('"') => string.push('"'),
-                    Some('\\') => string.push('\\'),
-                    Some('|') => string.push('|'),
-                    Some('x') => {
-                        lazy_static! {
-                            static ref HEX_ESCAPE: Regex =
-                                Regex::new("^([0-9a-fA-F]+);").unwrap();
-                        }
-                        // Awkard style; should use "?" and Results?
-                        match self.get_captures(&*HEX_ESCAPE)
-                                .and_then(|c|
-                            u32::from_str_radix(&c[1], 16).ok()
-                                ).and_then(|n|
-                            std::char::from_u32(n)) {
-
-                            Some(res_char) => string.push(res_char),
-                            None => return None,
-                        }
-                    },
-                    Some(mut w) => {
-                        // This is a mess. Should I use regular expressions?
-                        // Unicode?
-                        let mut prev_nl = false;
-                        loop {
-                            if w == '\n' {
-                                prev_nl = true;
-                            } else if w == '\r' {
-                                if self.peek_char(0) == Some('\n') {
-                                    self.get_char();
-                                }
-                                prev_nl = true;
-                            }
-                            w = self.peek_char(0)?;
-                            if !is_scheme_whitespace(w) {
-                                if prev_nl {
-                                    break;
-                                } else {
-                                    return None;
-                                }
-                            }
-                            if prev_nl && (w == '\n' || w == '\r') {
-                                return None;
-                            }
-                            self.get_char();
-                        }
-                    },
-                    None => {return None;},
+        let mut string = delimited::<_, _, _, _, nom::error::Error<&str>, _, _,
+            _>(
+            tag("\""),
+            fold_many0(alt((
+                    map(none_of("\r\n\\\""), Some),
+                    value(Some('\n'), alt((tag("\n"), tag("\r\n"), tag("\r")))),
+                    value(Some('\u{7}'), tag("\\a")),
+                    value(Some('\u{8}'), tag("\\b")),
+                    value(Some('\u{9}'), tag("\\t")),
+                    value(Some('\u{a}'), tag("\\n")),
+                    value(Some('\u{d}'), tag("\\r")),
+                    value(Some('\"'),    tag("\\\"")),
+                    value(Some('\\'),    tag("\\\\")),
+                    // \| not given in Section 7.1.1, but is described in
+                    // Section 6.7, see R7RS Errata.
+                    value(Some('|'),     tag("\\|")),
+                    value(None, tuple((
+                        tag("\\"),
+                        take_while(|c| c == ' ' || c == '\t'),
+                        alt((tag("\n"), tag("\r\n"), tag("\r"))),
+                        take_while(|c| c == ' ' || c == '\t')))),
+                    delimited(tag("\\x"),
+                        map_opt(hex_digit1,
+                            |esc| u32::from_str(esc).ok()
+                                .and_then(std::char::from_u32).map(Some)),
+                        tag(";"))
+                )),
+                Vec::new(),
+                |mut v, maybe_c| {
+                    maybe_c.map(|c| v.push(c));
+                    v
                 }
-            } else {
-                string.push(c);
-            }
-        }
-        // Loop ends without encountering end quote
-        None
+            ),
+            tag("\"")
+        );
+
+        let (rest, s) = string(self.0).ok()?;
+        self.0 = rest;
+        Some(Token::String(s))
     }
 }
 
@@ -623,6 +595,7 @@ fn test_whitespace() {
 fn test_comment() {
     test_lexer("; blah ; 10!)#!fold-case \n  1", Token::from_i64(1));
     test_lexer("; 123\r123", Token::from_i64(123));
+    test_lexer(";\n3", Token::from_i64(3));
     test_lexer("#| simple intra-line comment |# 1", Token::from_i64(1));
     test_lexer("#| | # #| a |# 22 |# 1", Token::from_i64(1));
     test_lexer("#| #| |#| |# 1 ;|# 2", Token::from_i64(1));
@@ -634,6 +607,7 @@ fn test_comment() {
 fn test_character() {
     test_lexer(r"#\ ", Token::Character(' '));
     test_lexer(r"#\a", Token::Character('a'));
+    test_lexer(r"#\A", Token::Character('A'));
     test_lexer(r"#\⅋", Token::Character('⅋'));
     // Unsure of this one
     test_lexer(r"#\x", Token::Character('x'));
@@ -683,11 +657,16 @@ fn test_string_escapes() {
     test_lexer_fail("\"\\\"");
     test_lexer("\"\\\\\"", Token::from_str("\\"));
     test_lexer("\"\\au\"", Token::from_str("\u{7}u"));
+    // Mnemonic escapes are case-sensitive, cf. R7RS p. 61
+    test_lexer_fail("\"\\A\"");
     test_lexer("\"s\\bs\"", Token::from_str("s\u{8}s"));
     test_lexer("\"4\\tt\"", Token::from_str("4\tt"));
     test_lexer("\" \\n\\n\"", Token::from_str(" \n\n"));
     test_lexer("\"\\r\\n\"", Token::from_str("\r\n"));
     test_lexer("\"\\||\"", Token::from_str("||"));
+    test_lexer("\"\\x61;\"", Token::from_str("a"));
+    test_lexer("\"\\X0100000;\"", Token::from_str("\u{100000}"));
+
     test_lexer("\"a\\\nb\"", Token::from_str("ab"));
     test_lexer("\"a\\ \n\tb\"", Token::from_str("ab"));
     test_lexer("\"a\\\t \r  b\"", Token::from_str("ab"));
@@ -700,8 +679,8 @@ fn test_string_escapes() {
 // corresponding string, see R7RS p. 46.
 fn test_string_newline() {
     test_lexer("\"a\\ \r\rb\"", Token::from_str("a\nb"));
-    test_lexer("\"a\\ \r\r\nb\"", Token::from_str("a\nb"));
-    test_lexer("\"a\\ \n\r\nb\"", Token::from_str("a\nb"));
+    test_lexer("\"a\\ \r\r\nc\"", Token::from_str("a\nc"));
+    test_lexer("\"a\\ \n\r\nd\"", Token::from_str("a\nd"));
     test_lexer("\"\n\"", Token::from_str("\n"));
     test_lexer("\"\r\"", Token::from_str("\n"));
     test_lexer("\"\r\n\"", Token::from_str("\n"));
