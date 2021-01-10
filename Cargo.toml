@@ -12,4 +12,4 @@ maplit = "1.0.1"
 nom = {version = "6.0.1", features = ["regexp"]}
 #nom = "6.0.1"
 num = "0.3.1"
-regex = "0.2"
+#regex = "0.2"

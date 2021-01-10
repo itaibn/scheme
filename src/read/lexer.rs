@@ -8,29 +8,31 @@ use nom::{
     self,
     IResult,
     branch::alt,
-    bytes::complete::{tag, take_till, take_while},
-    character::complete::{multispace1, none_of, one_of, oct_digit1, digit1,
-        hex_digit1},
-    combinator::{opt, map, map_opt, flat_map, recognize, value, success},
+    bytes::complete::{tag, tag_no_case, take_till, take_while},
+    character::complete::{anychar, digit1, hex_digit1, multispace1, none_of,
+        oct_digit1, one_of},
+    combinator::{eof, flat_map, map, map_opt, opt, peek, recognize, value,
+        success},
     multi::{fold_many0, many0},
     regexp::str::{re_find, re_capture},
-    sequence::{delimited, preceded, pair, tuple},
+    sequence::{delimited, preceded, pair, terminated, tuple},
 };
 use num::{self, BigRational, FromPrimitive, ToPrimitive};
-use regex::{Match, Regex};
 
 use crate::scheme::Scheme;
 
+/*
 lazy_static! {
     static ref IDENTIFIER: Regex = Regex::new(
-        //"^[[:alpha:]!$%&*/:<=>?@^_~][[:alnum:]!$%&*/:<=>?@^_~]*"
-        "^[[:alpha:]!$%&*/:<=>?^_~][[:alnum:]!$%&*/:<=>?^_~+-.@]*"
+        //"^[[:alpha:]!$%&*:/<=>?@^_~][[:alnum:]!$%&*:/<=>?@^_~]*"
+        "^[[:alpha:]!$%&*:/<=>?^_~][[:alnum:]!$%&*:/<=>?^_~+-.@]*"
     ).unwrap();
 //    static ref STRING: Regex = Regex::new(
 //        "^(:?[^\"\\\\]|\\\\(:?[\"\\\\|abtnr]))*\""
 }
+*/
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Token {
     LeftParen,
     LeftVector,
@@ -64,6 +66,7 @@ pub struct Lexer<'a>(&'a str);
 
 type LexerError = &'static str;
 
+/*
 /// Check whether a character is a delimiter. Unicode whitespace is not support.
 fn is_delimiter(c: char) -> bool {
     is_scheme_whitespace(c) || "|()\";".contains(c)
@@ -75,7 +78,6 @@ fn is_scheme_whitespace(c: char) -> bool {
     " \t\n\r".contains(c)
 }
 
-/*
 /// Match <initial> pattern. Unicode not supported.
 fn is_scheme_identifier_initial(c: char) -> bool {
     c.is_ascii_alphabetic() || "!$%&*:/<=>?^_~".contains(c)
@@ -128,6 +130,14 @@ impl Token {
     fn from_str(s: &str) -> Token {
         Token::String(s.chars().collect())
     }
+}
+
+/// Parser which recognizes delimiters without consuming it.
+fn delimiter(inp: &str) -> IResult<&str, ()> {
+    peek(alt((
+        value((), one_of(" \t\n\r|()\";")),
+        value((), eof)
+    )))(inp)
 }
 
 /// nom parser for a number.
@@ -250,10 +260,10 @@ fn number<'inp>(inp: &'inp str) -> IResult<&'inp str, Token> {
 
     // For compatibility with old version of number lexer incorporate sign
     // identifier
-    alt((
+    terminated(alt((
         num, 
         map(one_of("+-"), |s| Token::Identifier(s.to_string())),
-    ))(inp)
+    )), delimiter)(inp)
 }
 
 fn string_literal(inp: &str) -> IResult<&str, Token> {
@@ -331,193 +341,75 @@ fn intertoken_space(inp: &str) -> IResult<&str, Vec<&str>> {
     many0(alt((line_comment, multispace1, nested_comment)))(inp)
 }
 
+fn simple_token(inp: &str) -> IResult<&str, Token> {
+    alt((
+        value(Token::LeftParen, tag("(")),
+        value(Token::LeftVector, tag("#(")),
+        value(Token::LeftBytevector, tag_no_case("#u8(")),
+        value(Token::RightParen, tag(")")),
+        value(Token::DatumComment, tag("#;")),
+        value(Token::PrefixOp("quote"), tag("'")),
+        value(Token::PrefixOp("quasiquote"), tag("`")),
+        value(Token::PrefixOp("unquote-splicing"), tag(",@")),
+        value(Token::PrefixOp("unquote"), tag(",")),
+        terminated(alt((
+            value(Token::Dot, tag(".")),
+            value(Token::Boolean(true), tag_no_case("#true")),
+            value(Token::Boolean(true), tag_no_case("#t")),
+            value(Token::Boolean(false), tag_no_case("#false")),
+            value(Token::Boolean(false), tag_no_case("#f")),
+            value(Token::FoldCase(true), tag_no_case("#!fold-case")),
+            value(Token::FoldCase(false), tag_no_case("#!no-fold-case")),
+        )), delimiter)
+    ))(inp)
+}
+
+fn character(inp: &str) -> IResult<&str, Token> {
+    delimited(
+        tag("#\\"),
+        map(anychar, Token::Character),
+        delimiter
+    )(inp)
+}
+
+fn simple_identifier(inp: &str) -> IResult<&str, Token> {
+    lazy_static! {
+        static ref IDENTIFIER: nom::regex::Regex = nom::regex::Regex::new(
+            //"^[[:alpha:]!$%&*/:<=>?@^_~][[:alnum:]!$%&*/:<=>?@^_~]*"
+            "^[[:alpha:]!$%&*/:<=>?^_~][[:alnum:]!$%&*/:<=>?^_~+-.@]*"
+        ).unwrap();
+    }
+
+    map(
+        terminated(re_find(IDENTIFIER.clone()), delimiter),
+        |ident| Token::Identifier(ident.to_string())
+    )(inp)
+}
+
+fn token(inp: &str) -> IResult<&str, Token> {
+    preceded(intertoken_space,
+        alt((
+            simple_token,
+            number,
+            string_literal,
+            character,
+            simple_identifier
+    )))(inp)
+}
+
 // TODO: Comprehensive todo list, data comments, full number support, peculiar
 // identifiers, strings, pipe notation for identifiers, verifying agreement with
 // lexer specifications in Section 7.1.1
-impl<'lexer> Lexer<'lexer> {
-    pub fn from_str(input_str: &str) -> Lexer<'_> {
+impl<'a> Lexer<'a> {
+    pub fn from_str(input_str: &'a str) -> Lexer<'a> {
         Lexer(input_str)
-    }
-
-    // Suggestion: Turn all forms of newline into "\n"
-    fn get_char(&mut self) -> Option<char> {
-        let mut chars = self.0.chars();
-        let next_char = chars.next();
-        self.0 = chars.as_str();
-        next_char
-    }
-
-    fn get_match<'t>(&'t mut self, r: &Regex) -> Option<Match<'t>> {
-        // I don't think the borrow checker will accept this
-        r.find(self.0).map(|matching| {
-            self.0 = &self.0[matching.end()..];
-            matching
-        })
-    }
-
-    /// If the buffer starts with a prefix that matches the string `s`
-    /// case-insensitively, consume that prefix and return `true`. Otherwise
-    /// return `false`. Only case-insensitive for ASCII characters.
-    fn get_str_ci(&mut self, s: &str) -> bool {
-        let mut buff_iter = self.0.chars();
-        for c in s.chars() {
-            if buff_iter.next().map(|c| c.to_ascii_lowercase()) !=
-                Some(c.to_ascii_lowercase()) {
-                return false;
-            }
-        }
-        self.0 =  buff_iter.as_str();
-        true
-    }
-
-    fn peek_char(&self, n: usize) -> Option<char> {
-        self.0.chars().nth(n)
-    }
-
-    fn is_delimited(&self) -> bool {
-        self.peek_char(0).map(is_delimiter).unwrap_or(true)
     }
 
     /// Either consume and output a single token from the input stream, or
     /// output None while consuming an unspecified numbere of characters from
     /// the input stream.
     pub fn get_token(&mut self) -> Option<Token> {
-        self.consume_intertoken_space();
-        if let Some(ident) = self.get_ident() {
-            if self.is_delimited() {
-                return Some(ident)
-            }
-        }
-
-        // Depending on the first character, parse the rest of the token, and
-        // determine
-        // 1. Whether the first character needs to be explicitly consumed after
-        // parsing this branch (useful for one-line parsers)
-        // 2. Whether this token must be followed by a delimiter.
-        // 3. The resulting token
-        let (consume, needs_delimitor, out) = match self.peek_char(0) {
-            Some('(') => (true, false, Some(Token::LeftParen)),
-            Some(')') => (true, false, Some(Token::RightParen)),
-            Some('\'') => (true, false, Some(Token::PrefixOp("quote"))),
-            Some('`') => (true, false, Some(Token::PrefixOp("quasiquote"))),
-            Some(',') => {
-                if self.peek_char(1) == Some('@') {
-                    self.get_char(); self.get_char();
-                    (false, false, Some(Token::PrefixOp("unquote-splicing")))
-                } else {
-                    self.get_char();
-                    (false, false, Some(Token::PrefixOp("unquote")))
-                }
-            }
-            Some('.') => {
-                if self.peek_char(1).map(|c| is_delimiter(c)).unwrap_or(true) {
-                    (true, true, Some(Token::Dot))
-                } else {
-                    (false, true, self.get_number())
-                }
-            },
-            Some('"') => (false, false, self.get_string_literal()),
-            Some('-') | Some('+') => (false, true, self.get_number()),
-            Some('#') => match self.peek_char(1).map(|c| c.to_ascii_lowercase())
-            {
-                Some(';') => {
-                    self.get_char(); self.get_char();
-                    (false, false, Some(Token::DatumComment))
-                },
-                Some('(') => {
-                    self.get_char(); self.get_char();
-                    (false, false, Some(Token::LeftVector))
-                },
-                Some('u') => {
-                    // Improvement: Use a match-string pattern:
-                    //if (self.peek_char(2),
-                    //    self.peek_char(1).map(|c| c.to_ascii_lowercase()))
-                    if (self.peek_char(2), self.peek_char(3))
-                        == (Some('8'), Some('(')) {
-
-                        self.get_char(); self.get_char();
-                        self.get_char(); self.get_char();
-                        (false, false, Some(Token::LeftBytevector))
-                    } else {
-                        return None;
-                    }
-                },
-                Some('e') | Some('i') | Some('b') | Some('o') | Some('d') |
-                Some('x') => (false, true, self.get_number()),
-                Some('|') => panic!("Recursive comment incorrectly detected"),
-                Some('t') => {
-                    if self.get_str_ci("#true") {
-                        (false, true, Some(Token::Boolean(true)))
-                    } else if self.get_str_ci("#t") {
-                        (false, true, Some(Token::Boolean(true)))
-                    } else {
-                        (false, false, None)
-                    }
-                },
-                Some('f') => {
-                    if self.get_str_ci("#false") {
-                        (false, true, Some(Token::Boolean(false)))
-                    } else if self.get_str_ci("#f") {
-                        (false, true, Some(Token::Boolean(false)))
-                    } else {
-                        (false, false, None)
-                    }
-                },
-                Some('!') => {
-                    if self.get_str_ci("#!fold-case") {
-                        (false, true, Some(Token::FoldCase(true)))
-                    } else if self.get_str_ci("#!no-fold-case") {
-                        (false, true, Some(Token::FoldCase(false)))
-                    } else {
-                        (false, false, None)
-                    }
-                },
-                Some('\\') => {
-                    self.get_char(); self.get_char();
-                    let c = self.get_char()?;
-                    (false, true, Some(Token::Character(c)))
-                },
-                _ => (false, false, None),
-            }
-            Some(d) if d.is_digit(10) => (false, true, self.get_number()),
-            _ => (false, false, None),
-        };
-        if consume {self.get_char();}
-        if self.is_delimited() || !needs_delimitor {
-            out
-        } else {
-            None
-        }
-    }
-
-    /// Consumes whitespace and comments. This is like the <intertoken space>
-    /// category in the standard, except it doesn't support datum comments, and
-    /// directives are counted as tokens.
-    fn consume_intertoken_space(&mut self) {
-        let (rest, _) = intertoken_space(self.0).unwrap();
-        self.0 = rest;
-    }
-
-    fn get_ident(&mut self) -> Option<Token> {
-        self.get_match(&*IDENTIFIER).map(|matching| {
-            // In later versions some processing will be necessary to permit
-            // peculiar identifiers
-            Token::Identifier(matching.as_str().to_string())
-        })
-    }
-
-    /// Parse a number. As a hack, also parses the identifiers `+` or `-`.
-    /// Currently only supports integers (at any base) and floats. Supports
-    /// exactness specifiers.
-    fn get_number(&mut self) -> Option<Token> {
-        // Tell type inference we use default error type
-        let (rest, tok) = number(self.0).ok()?;
-        self.0 = rest;
-        Some(tok)
-    }
-
-    fn get_string_literal(&mut self) -> Option<Token> {
-        let (rest, tok) = string_literal(self.0).ok()?;
+        let (rest, tok) = token(self.0).ok()?;
         self.0 = rest;
         Some(tok)
     }
@@ -565,9 +457,11 @@ fn test_simple_tokens() {
     test_lexer(")", Token::RightParen);
     test_lexer("#(", Token::LeftVector);
     test_lexer("#u8(", Token::LeftBytevector);
+    test_lexer("#U8(", Token::LeftBytevector);
     test_lexer("#t", Token::Boolean(true));
     test_lexer("#true", Token::Boolean(true));
     test_lexer("#tRUe", Token::Boolean(true));
+    test_lexer("#TRUE", Token::Boolean(true));
     test_lexer("#f", Token::Boolean(false));
     test_lexer("#F", Token::Boolean(false));
     test_lexer("#false", Token::Boolean(false));
