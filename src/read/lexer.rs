@@ -4,6 +4,17 @@
 use std::str::FromStr;
 
 use lazy_static::lazy_static;
+use nom::{
+    IResult,
+    branch::{alt, permutation},
+    bytes::complete::{is_not, tag},
+    character::complete::{multispace1, one_of, oct_digit1, digit1, hex_digit1},
+    combinator::{opt, map, map_opt, flat_map, recognize, success},
+    error::Error,
+    multi::many0,
+    regexp::str::{re_find, re_capture},
+    sequence::{preceded, pair, tuple},
+};
 use num::{self, BigRational, FromPrimitive, ToPrimitive};
 use regex::{Captures, Match, Regex};
 
@@ -192,12 +203,19 @@ impl<'lexer> Lexer<'lexer> {
     /// output None while consuming an unspecified numbere of characters from
     /// the input stream.
     pub fn get_token(&mut self) -> Option<Token> {
-        self.consume_atmosphere();
+        self.consume_intertoken_space();
         if let Some(ident) = self.get_ident() {
             if self.is_delimited() {
                 return Some(ident)
             }
         }
+
+        // Depending on the first character, parse the rest of the token, and
+        // determine
+        // 1. Whether the first character needs to be explicitly consumed after
+        // parsing this branch (useful for one-line parsers)
+        // 2. Whether this token must be followed by a delimiter.
+        // 3. The resulting token
         let (consume, needs_delimitor, out) = match self.peek_char(0) {
             Some('(') => (true, false, Some(Token::LeftParen)),
             Some(')') => (true, false, Some(Token::RightParen)),
@@ -296,46 +314,42 @@ impl<'lexer> Lexer<'lexer> {
         }
     }
 
-    /// Consumes whitespace and comments. This is like the <atmosphere> category
-    /// in the standard, except it doesn't support datum comments.
-    fn consume_atmosphere(&mut self) {
-        loop {
-            match self.peek_char(0) {
-                Some(w) if is_scheme_whitespace(w) => {self.get_char();},
-                // Line comment
-                Some(';') => {
-                    loop {
-                        match self.get_char() {
-                            Some('\n') | Some('\r') | None => break,
-                            _ => {},
-                        }
-                    }
-                },
-                Some('#') => {
-                    if self.peek_char(1) == Some('|') {
-                        self.get_char(); self.get_char();
-                        let mut depth = 1;
-                        while depth > 0 {
-                            match self.get_char() {
-                                Some('#') => if self.peek_char(0) == Some('|') {
-                                    self.get_char();
-                                    depth += 1;
-                                },
-                                Some('|') => if self.peek_char(0) == Some('#') {
-                                    self.get_char();
-                                    depth -= 1;
-                                },
-                                None => unimplemented!(),
-                                _ => {},
-                            }
-                        }
-                    } else {
-                        break;
-                    }
-                },
-                _ => break,
-            }
+    /// Consumes whitespace and comments. This is like the <intertoken space>
+    /// category in the standard, except it doesn't support datum comments, and
+    /// directives are counted as tokens.
+    fn consume_intertoken_space(&mut self) {
+        lazy_static! {
+            // A non-nesting part of a nesting comment
+            static ref NON_NESTING_COMMENT: nom::regex::Regex =
+                nom::regex::Regex::new(r"^([^|#]|#+([^|]|$)|\|+([^#]|$))+")
+                    .unwrap();
         }
+
+        // A custom version of not_line_ending necessary since the nom version
+        // doesn't recognize a lone '\r' (cf. nom issue #1273)
+        let not_line_ending = is_not("\r\n");
+
+        // Strictly speaking this differs from the standard which would
+        // recognize ";<line>\r\n" as a single <comment>, whereas with this
+        // definition ";<line>\r" would match <comment> and then "\n" would
+        // match as a second <atmosphere>. Since this function matches an entire
+        // <intertoken space> this distinction is irrelevant.
+        let mut line_comment = recognize(tuple((tag(";"), not_line_ending,
+            one_of("\n\r"))));
+
+        fn nested_comment(inp: &str) -> IResult<&str, &str> {
+            let non_nesting_comment = re_find(NON_NESTING_COMMENT.clone());
+            recognize(tuple((
+                tag("#|"),
+                many0(alt((non_nesting_comment, nested_comment))),
+                tag("|#")
+            )))(inp)
+        }
+
+        let mut intertoken_space = many0(alt((line_comment, multispace1,
+            nested_comment)));
+        let (rest, _) = intertoken_space(self.0).unwrap();
+        self.0 = rest;
     }
 
     fn get_ident(&mut self) -> Option<Token> {
@@ -346,162 +360,10 @@ impl<'lexer> Lexer<'lexer> {
         })
     }
 
-    /// Parses numbers, consuming an unspecified number of characters if the
-    /// stream does not contain a valid number. Currently implements base and
-    /// exactness prefixes, ints and finite floats (no infinite floats, NaN,
-    /// rationals, or complex numbers). This implementation is a messy hack and
-    /// probably has bugs.
-    fn get_number_old(&mut self) -> Option<Token> {
-        let mut possible_ident = true;
-        let mut exactness = None;
-        let mut base = 10;
-        let mut base_specified = false;
-
-        let mut cur: i64 = 0;
-        let mut exponent: i64 = 0;
-        let mut float_mantissa = None;
-        let mut has_dot = false;
-        let mut has_digit = false; // has first digit appeared yet?
-        let mut negative = None;
-
-        // Parse prefixes
-        while self.peek_char(0) == Some('#') {
-            self.get_char();
-            let c = self.get_char()?.to_ascii_lowercase();
-            match c {
-                'e' => {
-                    if exactness.is_none() {
-                        exactness = Some(Exactness::Exact);
-                    } else {
-                        return None;
-                    }
-                },
-                'i' => {
-                    if exactness.is_none() {
-                        exactness = Some(Exactness::Inexact);
-                    } else {
-                        return None;
-                    }
-                },
-                'b' | 'o' | 'd' | 'x' => {
-                    if base_specified {
-                        return None;
-                    }
-                    base_specified = true;
-                    base = match c {
-                        'b' => 2,
-                        'o' => 8,
-                        'd' => 10,
-                        'x' => 16,
-                        _ => unreachable!(),
-                    }
-                },
-                _ => {
-                    return None;
-                }
-            }
-            possible_ident = false;
-        }
-
-        while !self.is_delimited() {
-            match self.get_char() {
-                Some(d) if d.is_digit(base) => {
-                    has_digit = true;
-                    if has_dot && float_mantissa.is_none() {
-                        exponent -= 1;
-                        negative = None;
-                    }
-                    cur = (base as i64)*cur + (d.to_digit(base).unwrap() as
-                        i64);
-                },
-                Some('+') => {
-                    if has_digit || negative.is_some() {
-                        return None;
-                    }
-                    negative = Some(false);
-                },
-                Some('-') => {
-                    if has_digit || negative.is_some() {
-                        return None;
-                    }
-                    negative = Some(true);
-                },
-                Some('.') => {
-                    if base != 10 || has_dot {
-                        return None;
-                    } else {
-                        has_dot = true;
-                    }
-                },
-                Some('e') => {
-                    if base != 10 || float_mantissa.is_some() || !has_digit {
-                        return None;
-                    } else {
-                        if negative == Some(true) {
-                            cur = -cur;
-                        }
-                        float_mantissa = Some(cur);
-                        negative = None;
-                        has_digit = false;
-                        cur = 0;
-                    }
-                }
-                _ => {return None;},
-            }
-        }
-
-        if let Some(n) = float_mantissa {
-            assert!(base == 10);
-            if negative == Some(true) {
-                cur = -cur;
-            }
-            negative = None;
-            exponent += cur;
-            cur = n;
-        }
-
-        if !has_digit & possible_ident {
-            if has_dot {return None;} // This is incorrect
-            // Ad hoc rule for allowing +/- as identifiers, does not fully
-            // incorporate <peculiar identifier>
-            return match negative {
-                Some(true) => Some(Token::Identifier("-".to_string())),
-                Some(false) => Some(Token::Identifier("+".to_string())),
-                None => None,
-            }
-        }
-
-        if negative == Some(true) {
-            cur = -cur;
-        }
-
-        let multiplier = if exponent >= 0 {
-            num::checked_pow(BigRational::from_u32(base)?,
-                exponent.to_usize()?)?
-        } else {
-            num::checked_pow(BigRational::from_u32(base)?.recip(),
-                (-exponent).to_usize()?)?
-        };
-
-        let value = BigRational::from_i64(cur)? * multiplier;
-
-        let exactness = exactness.unwrap_or(
-            if has_dot || float_mantissa.is_some()
-                {Exactness::Inexact}
-                else {Exactness::Exact});
-
-        Some(Token::Number(Number {exactness, value}))
-    }
-
+    /// Parse a number. As a hack, also parses the identifiers `+` or `-`.
+    /// Currently only supports integers (at any base) and floats. Supports
+    /// exactness specifiers.
     fn get_number(&mut self) -> Option<Token> {
-        use nom::{
-            branch::{alt, permutation},
-            bytes::complete::tag,
-            character::complete::{one_of, oct_digit1, digit1, hex_digit1},
-            combinator::{opt, map, map_opt, flat_map, success},
-            regexp::str::{re_match, re_capture},
-            sequence::{preceded, pair},
-        };
         use num::{BigInt, Num, Zero};
 
         // radix and exactness written as functions so they can be copied in
@@ -532,7 +394,7 @@ impl<'lexer> Lexer<'lexer> {
 
         let mut num = flat_map(prefix, |(base, exactness)| {
             let uinteger_raw = move |inp: &'lexer str| match base {
-                2 => re_match(nom::regex::Regex::new("[01]+").unwrap())(inp),
+                2 => re_find(nom::regex::Regex::new("^[01]+").unwrap())(inp),
                 8 => oct_digit1(inp),
                 10 => digit1(inp),
                 16 => hex_digit1(inp),
@@ -883,6 +745,7 @@ fn test_radix_int() {
     test_lexer("#x123", Token::from_i64(0x123));
     test_lexer("#o123", Token::from_i64(0o123));
     test_lexer("#b101", Token::from_i64(0b101));
+    test_lexer_fail("#bxxx101");
 }
 
 #[test]
