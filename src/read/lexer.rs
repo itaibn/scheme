@@ -6,11 +6,10 @@ use std::str::FromStr;
 use lazy_static::lazy_static;
 use nom::{
     IResult,
-    branch::{alt, permutation},
+    branch::alt,
     bytes::complete::{is_not, tag},
     character::complete::{multispace1, one_of, oct_digit1, digit1, hex_digit1},
     combinator::{opt, map, map_opt, flat_map, recognize, success},
-    error::Error,
     multi::many0,
     regexp::str::{re_find, re_capture},
     sequence::{preceded, pair, tuple},
@@ -52,20 +51,6 @@ pub enum Exactness  {
     Inexact,
 }
 
-/*
-pub struct Float {
-    num: Int,
-    base: u8,
-    exp: Int,
-}
-
-pub enum Real {
-    Rational(Rational),
-    Floa
-}
-*/
-
-//pub struct Complex
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Number {
     exactness: Exactness,
@@ -75,8 +60,6 @@ pub struct Number {
 #[derive(Debug)]
 pub struct Lexer<'a>(&'a str);
 
-//#[derive(Debug)]
-//pub struct LexerError;
 type LexerError = &'static str;
 
 /// Check whether a character is a delimiter. Unicode whitespace is not support.
@@ -90,20 +73,21 @@ fn is_scheme_whitespace(c: char) -> bool {
     " \t\n\r".contains(c)
 }
 
+/*
 /// Match <initial> pattern. Unicode not supported.
 fn is_scheme_identifier_initial(c: char) -> bool {
-    c.is_ascii_alphabetic() || "!$%&*/:<=>?^_~".contains(c)
+    c.is_ascii_alphabetic() || "!$%&*:/<=>?^_~".contains(c)
 }
 
 /// Match <subsequence> pattern. Unicode not supported.
 fn is_scheme_identifier_subsequent(c: char) -> bool {
     is_scheme_identifier_initial(c) || c.is_digit(10) || "+-.@".contains(c)
 }
+*/
 
 impl Number {
     /// If self is an exact u8 return it, otherwise return Nothing.
     pub fn as_u8(&self) -> Option<u8> {
-        // assumes all ints have den = 1.
         if self.exactness == Exactness::Inexact || !self.value.is_integer() {
             None
         } else {
@@ -121,7 +105,8 @@ impl Number {
         }
     }
 
-    /// Rational i64 with exactness. Used in testing/
+    /// Rational i64 with exactness. Used in testing
+    #[cfg(test)]
     fn rational_i64(num: i64, den: i64, exact: Exactness) -> Number {
         let rat = BigRational::from_i64(num).unwrap() /
             BigRational::from_i64(den).unwrap();
@@ -130,22 +115,22 @@ impl Number {
 }
 
 impl Token {
+    #[cfg(test)]
     fn from_i64(x: i64) -> Token {
         let rat = BigRational::from_i64(x).unwrap();
         let num = Number {exactness: Exactness::Exact, value: rat};
         Token::Number(num)
     }
 
+    #[cfg(test)]
     fn from_str(s: &str) -> Token {
         Token::String(s.chars().collect())
     }
 }
 
-// TODO: Comprehensive todo list, line comments, nested comments, data comments,
-// vectors, bytevectors, all number parsing, booleans, case-folding directives,
-// abbreviations for (unquote, quasiquote, unquote-splicing), characters,
-// strings, pipe notation for identifiers, verifying agreement with lexer
-// specifications in Section 7.1.1
+// TODO: Comprehensive todo list, data comments, full number support, peculiar
+// identifiers, strings, pipe notation for identifiers, verifying agreement with
+// lexer specifications in Section 7.1.1
 impl<'lexer> Lexer<'lexer> {
     pub fn from_str(input_str: &str) -> Lexer<'_> {
         Lexer(input_str)
@@ -169,7 +154,6 @@ impl<'lexer> Lexer<'lexer> {
 
     fn get_captures<'t>(&'t mut self, r: &Regex) -> Option<Captures<'t>> {
         // Copy-pasted from get_match without thought
-        // I don't think the borrow checker will accept this
         r.captures(self.0).map(|capture| {
             self.0 = &self.0[capture[0].len()..];
             capture
@@ -230,7 +214,7 @@ impl<'lexer> Lexer<'lexer> {
                     (false, false, Some(Token::PrefixOp("unquote")))
                 }
             }
-            Some('.') => { // TODO: Make this link to get_number?
+            Some('.') => {
                 if self.peek_char(1).map(|c| is_delimiter(c)).unwrap_or(true) {
                     (true, true, Some(Token::Dot))
                 } else {
@@ -276,8 +260,6 @@ impl<'lexer> Lexer<'lexer> {
                     }
                 },
                 Some('f') => {
-                    //self.get_char(); self.get_char();
-                    //(false, true, Some(Token::Boolean(false)))
                     if self.get_str_ci("#false") {
                         (false, true, Some(Token::Boolean(false)))
                     } else if self.get_str_ci("#f") {
@@ -303,7 +285,6 @@ impl<'lexer> Lexer<'lexer> {
                 _ => (false, false, None),
             }
             Some(d) if d.is_digit(10) => (false, true, self.get_number()),
-            //Some(c) if 
             _ => (false, false, None),
         };
         if consume {self.get_char();}
@@ -334,7 +315,7 @@ impl<'lexer> Lexer<'lexer> {
         // definition ";<line>\r" would match <comment> and then "\n" would
         // match as a second <atmosphere>. Since this function matches an entire
         // <intertoken space> this distinction is irrelevant.
-        let mut line_comment = recognize(tuple((tag(";"), not_line_ending,
+        let line_comment = recognize(tuple((tag(";"), not_line_ending,
             one_of("\n\r"))));
 
         fn nested_comment(inp: &str) -> IResult<&str, &str> {
@@ -392,7 +373,7 @@ impl<'lexer> Lexer<'lexer> {
             success((10, None)),
         ));
 
-        let mut num = flat_map(prefix, |(base, exactness)| {
+        let num = flat_map(prefix, |(base, exactness)| {
             let uinteger_raw = move |inp: &'lexer str| match base {
                 2 => re_find(nom::regex::Regex::new("^[01]+").unwrap())(inp),
                 8 => oct_digit1(inp),
@@ -400,7 +381,7 @@ impl<'lexer> Lexer<'lexer> {
                 16 => hex_digit1(inp),
                 _ => unreachable!(),
             };
-            let mut uinteger = map_opt(uinteger_raw, move |digits|
+            let uinteger = map_opt(uinteger_raw, move |digits|
                 BigInt::from_str_radix(digits, base).ok());
             /*
             let mut decimal = map_opt(re_capture(nom::regex::regex::new(
@@ -418,16 +399,11 @@ impl<'lexer> Lexer<'lexer> {
                 r"^([0-9]*)(\.([0-9]*))?([eE]([+-]?[0-9]+))?").unwrap();
 
             // This is really messy.
-            let mut decimal = map_opt(re_capture(float_re.clone()), move |c_raw|
+            let decimal = map_opt(re_capture(float_re.clone()), move |c_raw|
             {
                     let c = float_re.captures(c_raw[0]).unwrap();
-                    if // This condition is wrong
+                    if
                         base != 10 ||
-                        /*
-                        dbg!(c.get(1).map_or(true, |s| s.as_str().len() == 0)) &&
-                        dbg!(c.get(3).map_or(true, |s| s.as_str().len() == 0)) &&
-                        dbg!(c.get(4).is_none())
-                        */
                         c.get(1).unwrap().as_str().len() == 0 &&
                         c.get(3).map_or(true, |m| m.as_str().len() == 0) ||
                         c.get(2).is_none() && c.get(4).is_none()
@@ -435,11 +411,6 @@ impl<'lexer> Lexer<'lexer> {
                         None
                     } else {
                         let integral_str = c.get(1).unwrap().as_str();
-                        /*
-                        let mut integral = dbg!(c.get(1)).map_or(BigInt::zero(),
-                            |s| BigInt::from_str_radix(dbg!(s.as_str()),
-                                10).unwrap());
-                        */
                         let mut integral = if integral_str.len() > 0
                             {BigInt::from_str_radix(integral_str, 10).unwrap()}
                             else {BigInt::zero()};
@@ -463,7 +434,6 @@ impl<'lexer> Lexer<'lexer> {
                             rational})
                     }
             });
-            //dbg!(decimal(" 20"));
             let ureal = alt((
                 decimal,
                 map(uinteger,
@@ -472,12 +442,12 @@ impl<'lexer> Lexer<'lexer> {
                         value: n.into(),
                     }),
             ));
-            let mut sign = map(opt(one_of("+-")), |s| match s {
+            let sign = map(opt(one_of("+-")), |s| match s {
                 Some('+') | None => 1i32,
                 Some('-') => -1i32,
                 _ => unreachable!(),
             });
-            let mut real = map(pair(sign, ureal), |(s, mut n)| {
+            let real = map(pair(sign, ureal), |(s, mut n)| {
                 n.value = n.value * BigRational::from_integer(s.into());
                 n
             });
@@ -492,7 +462,7 @@ impl<'lexer> Lexer<'lexer> {
         // identifier
         let mut num_or_sign_id = alt((
             num, 
-            map(one_of("+-"), (|s| Token::Identifier(s.to_string()))),
+            map(one_of("+-"), |s| Token::Identifier(s.to_string())),
         ));
 
         // Tell type inference we use default error type
@@ -572,18 +542,6 @@ impl<'lexer> Lexer<'lexer> {
         }
         Some(Token::String(string))
     }
-
-    /*
-    fn read_line_comment(&mut self) {
-        while Some(c) = self.get_char() {
-            match c {
-                '\r' => {
-                    if let Some('\n') = self.peek_char() {
-                        self.get_char();
-                    }
-                '\n' => {
-    }
-    */
 }
 
 impl Iterator for Lexer<'_> {
@@ -594,16 +552,6 @@ impl Iterator for Lexer<'_> {
         self.get_token().map(Ok)
     }
 }
-
-/*
-fn is_ident_start(c: char) -> bool {
-    c.is_alphabetic() || "!$%&*:/<=>?@^_~".contains(c)
-}
-
-fn is_ident_subsequent(c: char) -> bool {
-    is_ident_start(c) || 
-}
-*/
 
 #[cfg(test)]
 fn test_lexer(inp: &str, out: Token) {
@@ -819,36 +767,3 @@ fn test_complex() {
     //test_lexer("-nan.0i", ...);
     //test_lexer("1.1e1+12/3i". ...);
 }
-
-/*
-#[test]
-fn test_nom_permutations() {
-    use nom::{
-        branch::{alt, permutation},
-        bytes::complete::tag,
-        character::complete::{one_of, oct_digit1, digit1, hex_digit1},
-        combinator::{opt, map, map_opt, flat_map},
-        regexp::str::re_find,
-        sequence::{preceded, pair},
-    };
-
-    let radix = map(opt(
-        map(preceded(tag("#"), one_of("bBoOdDxX")), |c| match c {
-            'b' | 'B' => 2u32,
-            'o' | 'O' => 8,
-            'd' | 'D' => 10,
-            'x' | 'X' => 16,
-            _ => unreachable!(),
-        })), |r| r.unwrap_or(10u32));
-    let exactness = opt(
-        map(preceded(tag("#"), one_of("eEiI")), |c| match c {
-            'e' | 'E' => Exactness::Exact,
-            'i' | 'I' => Exactness::Inexact,
-            _ => unreachable!(),
-        }));
-    let mut prefix = permutation((radix, exactness));
-
-    dbg!(prefix("#e#x"));
-    dbg!(prefix("#x#e"));
-}
-*/
