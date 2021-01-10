@@ -17,7 +17,7 @@ use nom::{
     sequence::{delimited, preceded, pair, tuple},
 };
 use num::{self, BigRational, FromPrimitive, ToPrimitive};
-use regex::{Captures, Match, Regex};
+use regex::{Match, Regex};
 
 use crate::scheme::Scheme;
 
@@ -130,6 +130,207 @@ impl Token {
     }
 }
 
+/// nom parser for a number.
+///
+/// As a hack, also parses the identifiers `+` or `-`.  Currently only supports
+/// integers (at any base) and floats. Supports exactness specifiers.
+fn number<'inp>(inp: &'inp str) -> IResult<&'inp str, Token> {
+    use num::{BigInt, Num, Zero};
+
+    // radix and exactness written as functions so they can be copied in
+    // prefix.
+    fn radix(inp: &str) -> nom::IResult<&str, u32> {
+        map(preceded(tag("#"), one_of("bBoOdDxX")), |c| match c {
+            'b' | 'B' => 2u32,
+            'o' | 'O' => 8,
+            'd' | 'D' => 10,
+            'x' | 'X' => 16,
+            _ => unreachable!(),
+        })(inp)
+    }
+    fn exactness(inp: &str) -> nom::IResult<&str, Exactness> {
+        map(preceded(tag("#"), one_of("eEiI")), |c| match c {
+            'e' | 'E' => Exactness::Exact,
+            'i' | 'I' => Exactness::Inexact,
+            _ => unreachable!(),
+        })(inp)
+    }
+    let prefix = alt((
+        map(pair(radix, exactness), |(b, e)| (b, Some(e))),
+        map(pair(exactness, radix), |(e, b)| (b, Some(e))),
+        map(radix, |b| (b, None)),
+        map(exactness, |e| (10, Some(e))),
+        success((10, None)),
+    ));
+
+    let num = flat_map(prefix, |(base, exactness)| {
+        let uinteger_raw = move |inp: &'inp str| match base {
+            2 => re_find(nom::regex::Regex::new("^[01]+").unwrap())(inp),
+            8 => oct_digit1(inp),
+            10 => digit1(inp),
+            16 => hex_digit1(inp),
+            _ => unreachable!(),
+        };
+        let uinteger = map_opt(uinteger_raw, move |digits|
+            BigInt::from_str_radix(digits, base).ok());
+        /*
+        let mut decimal = map_opt(re_capture(nom::regex::regex::new(
+                r"^([0-9]*)(\.([0-9])*)?([ee]([+-]?[0-9]+))?"
+            ).unwrap()), |s| f64::from_str(s).ok()
+                .and_then(bigrational::from_f64).map(|n|
+                    number {
+                        exactness: exactness::inexact,
+                        value: n
+                    }
+                )
+        );
+        */
+        let float_re = nom::regex::Regex::new(
+            r"^([0-9]*)(\.([0-9]*))?([eE]([+-]?[0-9]+))?").unwrap();
+
+        // This is really messy.
+        let decimal = map_opt(re_capture(float_re.clone()), move |c_raw|
+        {
+                let c = float_re.captures(c_raw[0]).unwrap();
+                if
+                    base != 10 ||
+                    c.get(1).unwrap().as_str().len() == 0 &&
+                    c.get(3).map_or(true, |m| m.as_str().len() == 0) ||
+                    c.get(2).is_none() && c.get(4).is_none()
+                {
+                    None
+                } else {
+                    let integral_str = c.get(1).unwrap().as_str();
+                    let mut integral = if integral_str.len() > 0
+                        {BigInt::from_str_radix(integral_str, 10).unwrap()}
+                        else {BigInt::zero()};
+                    let fractional = c.get(3).map_or(
+                        BigInt::zero(),
+                        |s| if s.as_str().len() > 0 {
+                            BigInt::from_str_radix(s.as_str(), 10).unwrap()}
+                            else {BigInt::zero()}
+                    );
+                    let frac_len = c.get(3).map_or(0, |s| s.end() -
+                        s.start());
+                    integral = integral * BigInt::from_u32(10)?
+                        .pow(frac_len.to_u32()?) + fractional;
+                    let exponent = c.get(5).map_or(0,
+                        |s| isize::from_str(s.as_str()).unwrap());
+                    let total_exponent = exponent.to_i32()?
+                        .checked_sub(frac_len.to_i32()?)?;
+                    let rational = BigRational::from_integer(integral) *
+                        BigRational::from_u32(10)?.pow(total_exponent);
+                    Some(Number {exactness: Exactness::Inexact, value:
+                        rational})
+                }
+        });
+        let ureal = alt((
+            decimal,
+            map(uinteger,
+                |n| Number {
+                    exactness: Exactness::Exact,
+                    value: n.into(),
+                }),
+        ));
+        let sign = map(opt(one_of("+-")), |s| match s {
+            Some('+') | None => 1i32,
+            Some('-') => -1i32,
+            _ => unreachable!(),
+        });
+        let real = map(pair(sign, ureal), |(s, mut n)| {
+            n.value = n.value * BigRational::from_integer(s.into());
+            n
+        });
+
+        map(real, move |mut n| {
+            n.exactness = exactness.unwrap_or(n.exactness);
+            Token::Number(n)
+        })
+    });
+
+    // For compatibility with old version of number lexer incorporate sign
+    // identifier
+    alt((
+        num, 
+        map(one_of("+-"), |s| Token::Identifier(s.to_string())),
+    ))(inp)
+}
+
+fn string_literal(inp: &str) -> IResult<&str, Token> {
+    map(delimited(
+        tag("\""),
+        fold_many0(alt((
+                map(none_of("\r\n\\\""), Some),
+                value(Some('\n'), alt((tag("\n"), tag("\r\n"), tag("\r")))),
+                value(Some('\u{7}'), tag("\\a")),
+                value(Some('\u{8}'), tag("\\b")),
+                value(Some('\u{9}'), tag("\\t")),
+                value(Some('\u{a}'), tag("\\n")),
+                value(Some('\u{d}'), tag("\\r")),
+                value(Some('\"'),    tag("\\\"")),
+                value(Some('\\'),    tag("\\\\")),
+                // \| not given in Section 7.1.1, but is described in Section
+                // 6.7, see R7RS Errata.
+                value(Some('|'),     tag("\\|")),
+                value(None, tuple((
+                    tag("\\"),
+                    take_while(|c| c == ' ' || c == '\t'),
+                    alt((tag("\n"), tag("\r\n"), tag("\r"))),
+                    take_while(|c| c == ' ' || c == '\t')))),
+                delimited(tag("\\x"),
+                    map_opt(hex_digit1,
+                        |esc| u32::from_str(esc).ok()
+                            .and_then(std::char::from_u32).map(Some)),
+                    tag(";"))
+            )),
+            Vec::new(),
+            |mut v, maybe_c| {
+                maybe_c.map(|c| v.push(c));
+                v
+            }
+        ),
+        tag("\"")
+    ), |v_char| Token::String(v_char))(inp)
+}
+
+/// nom parser which consumes whitespace and comments.
+///
+/// This is like the <intertoken space> category in the standard, except it
+/// doesn't support datum comments, and directives are counted as tokens.
+///
+/// TODO: Improve the type signature.
+fn intertoken_space(inp: &str) -> IResult<&str, Vec<&str>> {
+    lazy_static! {
+        // A non-nesting part of a nesting comment
+        static ref NON_NESTING_COMMENT: nom::regex::Regex =
+            nom::regex::Regex::new(r"^([^|#]|#+([^|]|$)|\|+([^#]|$))+")
+                .unwrap();
+    }
+
+    // A custom version of not_line_ending necessary since the nom version
+    // doesn't recognize a lone '\r' (cf. nom issue #1273)
+    let not_line_ending = take_till(|c| c == '\n' || c == '\r');
+
+    // Strictly speaking this differs from the standard which would
+    // recognize ";<line>\r\n" as a single <comment>, whereas with this
+    // definition ";<line>\r" would match <comment> and then "\n" would
+    // match as a second <atmosphere>. Since this function matches an entire
+    // <intertoken space> this distinction is irrelevant.
+    let line_comment = recognize(tuple((tag(";"), not_line_ending,
+        one_of("\n\r"))));
+
+    fn nested_comment(inp: &str) -> IResult<&str, &str> {
+        let non_nesting_comment = re_find(NON_NESTING_COMMENT.clone());
+        recognize(tuple((
+            tag("#|"),
+            many0(alt((non_nesting_comment, nested_comment))),
+            tag("|#")
+        )))(inp)
+    }
+
+    many0(alt((line_comment, multispace1, nested_comment)))(inp)
+}
+
 // TODO: Comprehensive todo list, data comments, full number support, peculiar
 // identifiers, strings, pipe notation for identifiers, verifying agreement with
 // lexer specifications in Section 7.1.1
@@ -151,14 +352,6 @@ impl<'lexer> Lexer<'lexer> {
         r.find(self.0).map(|matching| {
             self.0 = &self.0[matching.end()..];
             matching
-        })
-    }
-
-    fn get_captures<'t>(&'t mut self, r: &Regex) -> Option<Captures<'t>> {
-        // Copy-pasted from get_match without thought
-        r.captures(self.0).map(|capture| {
-            self.0 = &self.0[capture[0].len()..];
-            capture
         })
     }
 
@@ -301,36 +494,6 @@ impl<'lexer> Lexer<'lexer> {
     /// category in the standard, except it doesn't support datum comments, and
     /// directives are counted as tokens.
     fn consume_intertoken_space(&mut self) {
-        lazy_static! {
-            // A non-nesting part of a nesting comment
-            static ref NON_NESTING_COMMENT: nom::regex::Regex =
-                nom::regex::Regex::new(r"^([^|#]|#+([^|]|$)|\|+([^#]|$))+")
-                    .unwrap();
-        }
-
-        // A custom version of not_line_ending necessary since the nom version
-        // doesn't recognize a lone '\r' (cf. nom issue #1273)
-        let not_line_ending = take_till(|c| c == '\n' || c == '\r');
-
-        // Strictly speaking this differs from the standard which would
-        // recognize ";<line>\r\n" as a single <comment>, whereas with this
-        // definition ";<line>\r" would match <comment> and then "\n" would
-        // match as a second <atmosphere>. Since this function matches an entire
-        // <intertoken space> this distinction is irrelevant.
-        let line_comment = recognize(tuple((tag(";"), not_line_ending,
-            one_of("\n\r"))));
-
-        fn nested_comment(inp: &str) -> IResult<&str, &str> {
-            let non_nesting_comment = re_find(NON_NESTING_COMMENT.clone());
-            recognize(tuple((
-                tag("#|"),
-                many0(alt((non_nesting_comment, nested_comment))),
-                tag("|#")
-            )))(inp)
-        }
-
-        let mut intertoken_space = many0(alt((line_comment, multispace1,
-            nested_comment)));
         let (rest, _) = intertoken_space(self.0).unwrap();
         self.0 = rest;
     }
@@ -347,173 +510,16 @@ impl<'lexer> Lexer<'lexer> {
     /// Currently only supports integers (at any base) and floats. Supports
     /// exactness specifiers.
     fn get_number(&mut self) -> Option<Token> {
-        use num::{BigInt, Num, Zero};
-
-        // radix and exactness written as functions so they can be copied in
-        // prefix.
-        fn radix(inp: &str) -> nom::IResult<&str, u32> {
-            map(preceded(tag("#"), one_of("bBoOdDxX")), |c| match c {
-                'b' | 'B' => 2u32,
-                'o' | 'O' => 8,
-                'd' | 'D' => 10,
-                'x' | 'X' => 16,
-                _ => unreachable!(),
-            })(inp)
-        }
-        fn exactness(inp: &str) -> nom::IResult<&str, Exactness> {
-            map(preceded(tag("#"), one_of("eEiI")), |c| match c {
-                'e' | 'E' => Exactness::Exact,
-                'i' | 'I' => Exactness::Inexact,
-                _ => unreachable!(),
-            })(inp)
-        }
-        let prefix = alt((
-            map(pair(radix, exactness), |(b, e)| (b, Some(e))),
-            map(pair(exactness, radix), |(e, b)| (b, Some(e))),
-            map(radix, |b| (b, None)),
-            map(exactness, |e| (10, Some(e))),
-            success((10, None)),
-        ));
-
-        let num = flat_map(prefix, |(base, exactness)| {
-            let uinteger_raw = move |inp: &'lexer str| match base {
-                2 => re_find(nom::regex::Regex::new("^[01]+").unwrap())(inp),
-                8 => oct_digit1(inp),
-                10 => digit1(inp),
-                16 => hex_digit1(inp),
-                _ => unreachable!(),
-            };
-            let uinteger = map_opt(uinteger_raw, move |digits|
-                BigInt::from_str_radix(digits, base).ok());
-            /*
-            let mut decimal = map_opt(re_capture(nom::regex::regex::new(
-                    r"^([0-9]*)(\.([0-9])*)?([ee]([+-]?[0-9]+))?"
-                ).unwrap()), |s| f64::from_str(s).ok()
-                    .and_then(bigrational::from_f64).map(|n|
-                        number {
-                            exactness: exactness::inexact,
-                            value: n
-                        }
-                    )
-            );
-            */
-            let float_re = nom::regex::Regex::new(
-                r"^([0-9]*)(\.([0-9]*))?([eE]([+-]?[0-9]+))?").unwrap();
-
-            // This is really messy.
-            let decimal = map_opt(re_capture(float_re.clone()), move |c_raw|
-            {
-                    let c = float_re.captures(c_raw[0]).unwrap();
-                    if
-                        base != 10 ||
-                        c.get(1).unwrap().as_str().len() == 0 &&
-                        c.get(3).map_or(true, |m| m.as_str().len() == 0) ||
-                        c.get(2).is_none() && c.get(4).is_none()
-                    {
-                        None
-                    } else {
-                        let integral_str = c.get(1).unwrap().as_str();
-                        let mut integral = if integral_str.len() > 0
-                            {BigInt::from_str_radix(integral_str, 10).unwrap()}
-                            else {BigInt::zero()};
-                        let fractional = c.get(3).map_or(
-                            BigInt::zero(),
-                            |s| if s.as_str().len() > 0 {
-                                BigInt::from_str_radix(s.as_str(), 10).unwrap()}
-                                else {BigInt::zero()}
-                        );
-                        let frac_len = c.get(3).map_or(0, |s| s.end() -
-                            s.start());
-                        integral = integral * BigInt::from_u32(10)?
-                            .pow(frac_len.to_u32()?) + fractional;
-                        let exponent = c.get(5).map_or(0,
-                            |s| isize::from_str(s.as_str()).unwrap());
-                        let total_exponent = exponent.to_i32()?
-                            .checked_sub(frac_len.to_i32()?)?;
-                        let rational = BigRational::from_integer(integral) *
-                            BigRational::from_u32(10)?.pow(total_exponent);
-                        Some(Number {exactness: Exactness::Inexact, value:
-                            rational})
-                    }
-            });
-            let ureal = alt((
-                decimal,
-                map(uinteger,
-                    |n| Number {
-                        exactness: Exactness::Exact,
-                        value: n.into(),
-                    }),
-            ));
-            let sign = map(opt(one_of("+-")), |s| match s {
-                Some('+') | None => 1i32,
-                Some('-') => -1i32,
-                _ => unreachable!(),
-            });
-            let real = map(pair(sign, ureal), |(s, mut n)| {
-                n.value = n.value * BigRational::from_integer(s.into());
-                n
-            });
-
-            map(real, move |mut n| {
-                n.exactness = exactness.unwrap_or(n.exactness);
-                Token::Number(n)
-            })
-        });
-
-        // For compatibility with old version of number lexer incorporate sign
-        // identifier
-        let mut num_or_sign_id = alt((
-            num, 
-            map(one_of("+-"), |s| Token::Identifier(s.to_string())),
-        ));
-
         // Tell type inference we use default error type
-        let ires: nom::IResult<&str, Token> = num_or_sign_id(self.0);
-        let (rest, tok) = ires.ok()?;
+        let (rest, tok) = number(self.0).ok()?;
         self.0 = rest;
         Some(tok)
     }
 
     fn get_string_literal(&mut self) -> Option<Token> {
-        let mut string = delimited::<_, _, _, _, nom::error::Error<&str>, _, _,
-            _>(
-            tag("\""),
-            fold_many0(alt((
-                    map(none_of("\r\n\\\""), Some),
-                    value(Some('\n'), alt((tag("\n"), tag("\r\n"), tag("\r")))),
-                    value(Some('\u{7}'), tag("\\a")),
-                    value(Some('\u{8}'), tag("\\b")),
-                    value(Some('\u{9}'), tag("\\t")),
-                    value(Some('\u{a}'), tag("\\n")),
-                    value(Some('\u{d}'), tag("\\r")),
-                    value(Some('\"'),    tag("\\\"")),
-                    value(Some('\\'),    tag("\\\\")),
-                    // \| not given in Section 7.1.1, but is described in
-                    // Section 6.7, see R7RS Errata.
-                    value(Some('|'),     tag("\\|")),
-                    value(None, tuple((
-                        tag("\\"),
-                        take_while(|c| c == ' ' || c == '\t'),
-                        alt((tag("\n"), tag("\r\n"), tag("\r"))),
-                        take_while(|c| c == ' ' || c == '\t')))),
-                    delimited(tag("\\x"),
-                        map_opt(hex_digit1,
-                            |esc| u32::from_str(esc).ok()
-                                .and_then(std::char::from_u32).map(Some)),
-                        tag(";"))
-                )),
-                Vec::new(),
-                |mut v, maybe_c| {
-                    maybe_c.map(|c| v.push(c));
-                    v
-                }
-            ),
-            tag("\"")
-        );
-
-        let (rest, s) = string(self.0).ok()?;
+        let (rest, tok) = string_literal(self.0).ok()?;
         self.0 = rest;
-        Some(Token::String(s))
+        Some(tok)
     }
 }
 
