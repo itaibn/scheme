@@ -266,32 +266,38 @@ fn number<'inp>(inp: &'inp str) -> IResult<&'inp str, Token> {
     )), delimiter)(inp)
 }
 
+/// Shared escape codes used in both pipe identifiers and string literals.
+/// Corresponds to <inline hex escape> or <mnemonic escape>, as well as \" and
+/// \| and \\ as described in R7RS errata.
+fn escape_code(inp: &str) -> IResult<&str, char> {
+    alt((
+        value('\u{7}', tag("\\a")),
+        value('\u{8}', tag("\\b")),
+        value('\u{9}', tag("\\t")),
+        value('\u{a}', tag("\\n")),
+        value('\u{d}', tag("\\r")),
+        value('\\',    tag("\\\\")),
+        value('|',     tag("\\|")),
+        delimited(tag("\\x"),
+            map_opt(hex_digit1,
+                |esc| u32::from_str_radix(esc, 16).ok()
+                    .and_then(std::char::from_u32)),
+            tag(";"))
+    ))(inp)
+}
+
 fn string_literal(inp: &str) -> IResult<&str, Token> {
     map(delimited(
         tag("\""),
         fold_many0(alt((
                 map(none_of("\r\n\\\""), Some),
                 value(Some('\n'), alt((tag("\n"), tag("\r\n"), tag("\r")))),
-                value(Some('\u{7}'), tag("\\a")),
-                value(Some('\u{8}'), tag("\\b")),
-                value(Some('\u{9}'), tag("\\t")),
-                value(Some('\u{a}'), tag("\\n")),
-                value(Some('\u{d}'), tag("\\r")),
-                value(Some('\"'),    tag("\\\"")),
-                value(Some('\\'),    tag("\\\\")),
-                // \| not given in Section 7.1.1, but is described in Section
-                // 6.7, see R7RS Errata.
-                value(Some('|'),     tag("\\|")),
+                map(escape_code, Some),
                 value(None, tuple((
                     tag("\\"),
                     take_while(|c| c == ' ' || c == '\t'),
                     alt((tag("\n"), tag("\r\n"), tag("\r"))),
                     take_while(|c| c == ' ' || c == '\t')))),
-                delimited(tag("\\x"),
-                    map_opt(hex_digit1,
-                        |esc| u32::from_str(esc).ok()
-                            .and_then(std::char::from_u32).map(Some)),
-                    tag(";"))
             )),
             Vec::new(),
             |mut v, maybe_c| {
@@ -367,7 +373,21 @@ fn simple_token(inp: &str) -> IResult<&str, Token> {
 fn character(inp: &str) -> IResult<&str, Token> {
     delimited(
         tag("#\\"),
-        map(anychar, Token::Character),
+        map(alt((
+            value('\u{7}', tag_no_case("alarm")),
+            value('\u{8}', tag_no_case("backspace")),
+            value('\u{7f}', tag_no_case("delete")),
+            value('\u{1b}', tag_no_case("escape")),
+            value('\u{a}', tag_no_case("newline")),
+            value('\u{0}', tag_no_case("null")),
+            value('\u{d}', tag_no_case("return")),
+            value(' ', tag_no_case("space")),
+            value('\u{9}', tag_no_case("tab")),
+            map_opt(preceded(tag_no_case("x"), hex_digit1),
+                |hex| u32::from_str_radix(hex, 16).ok()
+                        .and_then(std::char::from_u32)),
+            anychar
+        )), Token::Character),
         delimiter
     )(inp)
 }
@@ -516,7 +536,6 @@ fn test_character() {
     test_lexer_fail(r"#\uident");
 }
 
-#[ignore]
 #[test]
 fn test_character_escape() {
     test_lexer(r"#\x0", Token::Character('\u{0}'));
@@ -529,7 +548,6 @@ fn test_character_escape() {
     test_lexer(r"#\x000000061", Token::Character('a'));
 }
 
-#[ignore]
 #[test]
 fn test_character_name() {
     test_lexer(r"#\alarm", Token::Character('\u{7}'));
