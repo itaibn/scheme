@@ -1,5 +1,6 @@
 
 mod builtin;
+mod equality;
 mod number;
 mod port;
 mod read;

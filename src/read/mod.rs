@@ -1,9 +1,10 @@
 mod lexer;
 
+use std::mem;
+
+use crate::equality::SchemeEq;
 use crate::scheme::Scheme;
 use self::lexer::{Lexer, Token};
-
-use std::mem;
 
 pub fn read(input: &str) -> Result<Scheme, &'static str> {
     Reader::from_str(input).read_expr()
@@ -131,6 +132,11 @@ impl<'a> Reader<'a> {
     }
 }
 
+#[cfg(test)]
+fn test_read(s: &str, val: Scheme) {
+    assert!(read(s).expect(s).equal(&val))
+}
+
 #[test]
 fn test_read_0() {
     read("0").unwrap();
@@ -138,12 +144,12 @@ fn test_read_0() {
 
 #[test]
 fn test_read_vector() {
-    assert_eq!(read("#(1 a #t)"), Ok(Scheme::vector(vec![Scheme::int(1),
-        Scheme::symbol("a"), Scheme::boolean(true)])))
+    test_read("#(1 a #t)", Scheme::vector(vec![Scheme::int(1),
+        Scheme::symbol("a"), Scheme::boolean(true)]));
 }
 
 #[test]
 fn test_read_bytevector() {
-    assert_eq!(read("#U8(0 1 2 3 254 255)"), Ok(Scheme::bytevector(vec![0, 1, 2,
-        3, 254, 255])));
+    test_read("#U8(0 1 2 3 254 255)", Scheme::bytevector(vec![0, 1, 2, 3, 254,
+        255]));
 }

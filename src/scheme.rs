@@ -8,12 +8,12 @@ use std::iter::DoubleEndedIterator;
 use gc::{self, Gc, GcCell};
 use num::FromPrimitive;
 
+//use crate::equality::SchemeEq;
 use crate::number::Number;
-
 use crate::runtime::Procedure;
 
 // TODO: Rethink derive(PartialEq)
-#[derive(Debug, gc::Finalize, PartialEq, gc::Trace)]
+#[derive(Debug, gc::Finalize, gc::Trace)]
 enum SchemeData {
     Boolean(bool),
     Character(char),
@@ -34,13 +34,13 @@ enum SchemeData {
 /// An immutable reference to a Scheme value. In R7RS language (cf. Section
 /// 3.4), this stands for a location whenever the location is stored in an
 /// immutable object.
-#[derive(Clone, Debug, PartialEq, gc::Finalize, gc::Trace)]
+#[derive(Clone, Debug, gc::Finalize, gc::Trace)]
 pub struct Scheme(Gc<SchemeData>);
 
 /// A mutable reference to a Scheme value. In R7RS language (cf. Section 3.4),
 /// this stands for a location whenever the location is stored in a mutable
 /// object. (TODO: Is this type actually necessary?)
-#[derive(Debug, PartialEq, gc::Finalize, gc::Trace)]
+#[derive(Debug, gc::Finalize, gc::Trace)]
 pub struct SchemeMut(GcCell<Scheme>);
 // Note: I believe the above is used incorrect, especially with respect to
 // cloning. TODO: Review uses of SchemeMut.
@@ -53,6 +53,10 @@ pub struct Error;
 impl Scheme {
     fn from_data(data: SchemeData) -> Scheme {
         Scheme(Gc::new(data))
+    }
+
+    pub fn as_ptr(&self) -> *const () {
+        &*self.0 as *const _ as *const ()
     }
 
     pub fn boolean(b: bool) -> Scheme {
@@ -84,7 +88,10 @@ impl Scheme {
     }
 
     pub fn is_null(&self) -> bool {
-        *self.0 == SchemeData::Null
+        match *self.0 {
+            SchemeData::Null => true,
+            _ => false,
+        }
     }
 
     pub fn cons(fst: Scheme, snd: Scheme) -> Scheme {
@@ -332,12 +339,13 @@ impl fmt::Debug for SchemeData {
 #[cfg(test)]
 mod test {
     use crate::builtin::initial_environment;
+    use crate::equality::SchemeEq;
     use crate::read::read;
     use super::Scheme;
 
     fn comparison(input: &str, output: Scheme) {
         let expr = read(input).unwrap();
-        assert_eq!(expr.eval(&initial_environment()).unwrap(), output);
+        assert!(expr.eval(&initial_environment()).unwrap().equal(&output));
     }
 
     #[test]

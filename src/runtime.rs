@@ -8,11 +8,11 @@ use gc::{self, Finalize, Gc, GcCell, Trace};
 use crate::scheme::{Error, Scheme, SchemeMut};
 
 /// Wrapper type for unevaluated Scheme expressions.
-#[derive(Clone, Debug, Finalize, PartialEq, Trace)]
+#[derive(Clone, Debug, Finalize, Trace)]
 pub struct Expression(pub Scheme);
 
 // Clone-by-reference environment
-#[derive(Clone, Debug, Finalize, PartialEq, Trace)]
+#[derive(Clone, Debug, Finalize, Trace)]
 pub struct Environment(Gc<GcCell<EnvironmentData>>);
 
 /*
@@ -24,7 +24,7 @@ impl fmt::Debug for Environment {
 }
 */
 
-#[derive(Clone, Debug, Finalize, PartialEq, Trace)]
+#[derive(Clone, Debug, Finalize, Trace)]
 pub struct EnvironmentData {
     parent: Option<Environment>,
     local: HashMap<String, Binding>,
@@ -32,18 +32,18 @@ pub struct EnvironmentData {
 
 // TODO: Add a `None` option and remove extraneous Option in lookup type
 // pub?
-#[derive(Clone, Debug, Finalize, PartialEq, Trace)]
+#[derive(Clone, Debug, Finalize, Trace)]
 pub enum Binding {
     Variable(Gc<SchemeMut>),
     Syntax(BuiltinSyntax),
 }
 
 // derive(PartialEq)?
-#[derive(Debug, Clone, Finalize, PartialEq, Trace)]
+#[derive(Debug, Clone, Finalize, Trace)]
 pub struct Continuation(Gc<ContinuationData>);
 
 // derive(PartialEq)?
-#[derive(Debug, Finalize, PartialEq, Trace)]
+#[derive(Debug, Finalize, Trace)]
 enum ContinuationData {
     // Left-to-right evaluation order for now
     Application {
@@ -115,19 +115,21 @@ impl fmt::Debug for EvaluationSequenceBox {
     }
 }
 
+/*
 impl PartialEq for EvaluationSequenceBox {
     fn eq(&self, other: &Self) -> bool {
         self.id() == other.id()
     }
 }
+*/
 
 // derive(PartialEq)?
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug)]
 pub struct Task(TaskEnum);
 
 // derive(PartialEq)?
 // derive(inalize, Trace)?
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug)]
 enum TaskEnum {
     Eval {
         expression: Expression,
@@ -143,10 +145,10 @@ enum TaskEnum {
     Done(Scheme),
 }
 
-#[derive(Clone, Debug, Finalize, PartialEq, Trace)]
+#[derive(Clone, Debug, Finalize, Trace)]
 pub struct Procedure(ProcEnum);
 
-#[derive(Clone, Debug, Finalize, PartialEq, Trace)]
+#[derive(Clone, Debug, Finalize, Trace)]
 enum ProcEnum {
     Builtin(Builtin), // Deprecate this?
     SimpleBuiltin(SimpleBuiltin),
@@ -166,7 +168,7 @@ pub type BuiltinSyntax = fn(Vec<Expression>, Environment, Continuation) ->
     Result<Task, Error>;
 
 // pub?
-#[derive(Debug, Clone, Finalize, PartialEq, Trace)]
+#[derive(Debug, Clone, Finalize, Trace)]
 pub struct Lambda {
     binder: Formals,
     body: Expression,
