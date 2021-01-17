@@ -15,7 +15,7 @@ pub struct Port {
 }
 
 //#[derive(Clone, Debug, Finalize, PartialEq, Trace)]
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PortRWType {
     Read,
     Write,
