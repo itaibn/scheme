@@ -19,6 +19,7 @@ use nom::{
 };
 use num::{self, BigRational, FromPrimitive, ToPrimitive};
 
+use crate::number::Exactness;
 use crate::scheme::Scheme;
 
 /*
@@ -47,12 +48,6 @@ pub enum Token {
     Number(Number),
     Character(char),
     String(Vec<char>),
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Exactness  {
-    Exact,
-    Inexact,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
