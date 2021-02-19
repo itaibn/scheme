@@ -159,6 +159,18 @@ impl Scheme {
         }
     }
 
+    pub fn number(n: Number) -> Scheme {
+        Scheme::from_data(SchemeData::Number(n))
+    }
+
+    pub fn as_number(&self) -> Option<&Number> {
+        if let SchemeData::Number(ref n) = *self.0 {
+            Some(&n)
+        } else {
+            None
+        }
+    }
+
     pub fn int(n: i64) -> Scheme {
         Scheme::from_data(SchemeData::Number(Number::from_i64(n).unwrap()))
     }
