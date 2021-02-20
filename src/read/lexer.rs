@@ -19,7 +19,7 @@ use nom::{
 };
 use num::{self, BigRational, FromPrimitive, ToPrimitive};
 
-use crate::number::Exactness;
+use crate::number::{self, Exactness};
 use crate::scheme::Scheme;
 
 /*
@@ -50,11 +50,8 @@ pub enum Token {
     String(Vec<char>),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Number {
-    exactness: Exactness,
-    value: BigRational,
-}
+#[derive(Debug, Clone, PartialEq)]
+pub struct Number(number::Number);
 
 #[derive(Debug)]
 pub struct Lexer<'a>(&'a str);
@@ -87,21 +84,25 @@ fn is_scheme_identifier_subsequent(c: char) -> bool {
 impl Number {
     /// If self is an exact u8 return it, otherwise return Nothing.
     pub fn as_u8(&self) -> Option<u8> {
+    /*
         if self.exactness == Exactness::Inexact || !self.value.is_integer() {
             None
         } else {
             self.value.to_integer().to_u8()
         }
+    */
+        if self.0.is_exact() {self.0.to_u8()} else {None}
     }
 
     /// Convert a number into a Scheme value. Implementation is currently
     /// incomplete.
     pub fn to_scheme(&self) -> Scheme {
-        if self.value.is_integer() {
-            Scheme::int(self.value.to_integer().to_i64().unwrap())
-        } else {
-            unimplemented!()
-        }
+        Scheme::number(self.0.clone())
+    }
+
+    fn big_rational(r: BigRational, exact: Exactness) -> Number {
+        let exact_num = number::Number::from_exact_complex(r.into());
+        Number(exact_num.to_exactness(exact))
     }
 
     /// Rational i64 with exactness. Used in testing
@@ -109,15 +110,18 @@ impl Number {
     fn rational_i64(num: i64, den: i64, exact: Exactness) -> Number {
         let rat = BigRational::from_i64(num).unwrap() /
             BigRational::from_i64(den).unwrap();
-        Number {exactness: exact, value: rat}
+        Number::big_rational(rat, exact)
     }
 }
+
+// Unsound and probably unnecessary:
+impl Eq for Number {}
 
 impl Token {
     #[cfg(test)]
     fn from_i64(x: i64) -> Token {
         let rat = BigRational::from_i64(x).unwrap();
-        let num = Number {exactness: Exactness::Exact, value: rat};
+        let num = Number::big_rational(rat, Exactness::Exact);
         Token::Number(num)
     }
 
@@ -225,31 +229,29 @@ fn number<'inp>(inp: &'inp str) -> IResult<&'inp str, Token> {
                         .checked_sub(frac_len.to_i32()?)?;
                     let rational = BigRational::from_integer(integral) *
                         BigRational::from_u32(10)?.pow(total_exponent);
-                    Some(Number {exactness: Exactness::Inexact, value:
-                        rational})
+                    Some((Exactness::Inexact, rational))
                 }
         });
         let ureal = alt((
             decimal,
             map(uinteger,
-                |n| Number {
-                    exactness: Exactness::Exact,
-                    value: n.into(),
-                }),
+                |n| (Exactness::Exact, n.into())
+            ),
         ));
         let sign = map(opt(one_of("+-")), |s| match s {
             Some('+') | None => 1i32,
             Some('-') => -1i32,
             _ => unreachable!(),
         });
-        let real = map(pair(sign, ureal), |(s, mut n)| {
-            n.value = n.value * BigRational::from_integer(s.into());
-            n
+        let real = map(pair(sign, ureal), |(s, (e, mut value))| {
+            value = value * BigRational::from_integer(s.into());
+            (e, value)
         });
 
         map(real, move |mut n| {
-            n.exactness = exactness.unwrap_or(n.exactness);
-            Token::Number(n)
+            n.0 = exactness.unwrap_or(n.0);
+            let num = Number::big_rational(n.1, n.0);
+            Token::Number(num)
         })
     });
 
