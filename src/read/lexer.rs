@@ -139,6 +139,121 @@ fn delimiter(inp: &str) -> IResult<&str, ()> {
     )))(inp)
 }
 
+fn radix(inp: &str) -> IResult<&str, u32> {
+    map(preceded(tag("#"), one_of("bBoOdDxX")), |c| match c {
+        'b' | 'B' => 2u32,
+        'o' | 'O' => 8,
+        'd' | 'D' => 10,
+        'x' | 'X' => 16,
+        _ => unreachable!(),
+    })(inp)
+}
+
+fn exactness(inp: &str) -> IResult<&str, Exactness> {
+    map(preceded(tag("#"), one_of("eEiI")), |c| match c {
+        'e' | 'E' => Exactness::Exact,
+        'i' | 'I' => Exactness::Inexact,
+        _ => unreachable!(),
+    })(inp)
+}
+
+fn prefix(inp: &str) -> IResult<&str, (u32, Option<Exactness>)> {
+    alt((
+        map(pair(radix, exactness), |(b, e)| (b, Some(e))),
+        map(pair(exactness, radix), |(e, b)| (b, Some(e))),
+        map(radix, |b| (b, None)),
+        map(exactness, |e| (10, Some(e))),
+        success((10, None)),
+    ))(inp)
+}
+
+fn real<'inp>(base: u32, exactness: Option<Exactness>, input: &'inp str) ->
+    IResult<&'inp str, Token> {
+
+    use num::{BigInt, Num, Zero};
+
+    let uinteger_raw = move |inp: &'inp str| match base {
+        2 => re_find(nom::regex::Regex::new("^[01]+").unwrap())(inp),
+        8 => oct_digit1(inp),
+        10 => digit1(inp),
+        16 => hex_digit1(inp),
+        _ => unreachable!(),
+    };
+    let uinteger = map_opt(uinteger_raw, move |digits|
+        BigInt::from_str_radix(digits, base).ok());
+    /*
+    let mut decimal = map_opt(re_capture(nom::regex::regex::new(
+            r"^([0-9]*)(\.([0-9])*)?([ee]([+-]?[0-9]+))?"
+        ).unwrap()), |s| f64::from_str(s).ok()
+            .and_then(bigrational::from_f64).map(|n|
+                number {
+                    exactness: exactness::inexact,
+                    value: n
+                }
+            )
+    );
+    */
+    let float_re = nom::regex::Regex::new(
+        r"^([0-9]*)(\.([0-9]*))?([eE]([+-]?[0-9]+))?").unwrap();
+
+    // This is really messy.
+    let decimal = map_opt(re_capture(float_re.clone()), move |c_raw|
+    {
+            let c = float_re.captures(c_raw[0]).unwrap();
+            if
+                base != 10 ||
+                c.get(1).unwrap().as_str().len() == 0 &&
+                c.get(3).map_or(true, |m| m.as_str().len() == 0) ||
+                c.get(2).is_none() && c.get(4).is_none()
+            {
+                None
+            } else {
+                let integral_str = c.get(1).unwrap().as_str();
+                let mut integral = if integral_str.len() > 0
+                    {BigInt::from_str_radix(integral_str, 10).unwrap()}
+                    else {BigInt::zero()};
+                let fractional = c.get(3).map_or(
+                    BigInt::zero(),
+                    |s| if s.as_str().len() > 0 {
+                        BigInt::from_str_radix(s.as_str(), 10).unwrap()}
+                        else {BigInt::zero()}
+                );
+                let frac_len = c.get(3).map_or(0, |s| s.end() -
+                    s.start());
+                integral = integral * BigInt::from_u32(10)?
+                    .pow(frac_len.to_u32()?) + fractional;
+                let exponent = c.get(5).map_or(0,
+                    |s| isize::from_str(s.as_str()).unwrap());
+                let total_exponent = exponent.to_i32()?
+                    .checked_sub(frac_len.to_i32()?)?;
+                let rational = BigRational::from_integer(integral) *
+                    BigRational::from_u32(10)?.pow(total_exponent);
+                Some((Exactness::Inexact, rational))
+            }
+    });
+    let ureal = alt((
+        decimal,
+        map(uinteger,
+            |n| (Exactness::Exact, n.into())
+        ),
+    ));
+    let sign = map(opt(one_of("+-")), |s| match s {
+        Some('+') | None => 1i32,
+        Some('-') => -1i32,
+        _ => unreachable!(),
+    });
+    let real = map(pair(sign, ureal), |(s, (e, mut value))| {
+        value = value * BigRational::from_integer(s.into());
+        (e, value)
+    });
+
+    map(real, move |mut n| {
+        n.0 = exactness.unwrap_or(n.0);
+        let num = Number::big_rational(n.1, n.0);
+        Token::Number(num)
+    })(input)
+}
+
 /// nom parser for a number.
 ///
 /// As a hack, also parses the identifiers `+` or `-`.  Currently only supports
@@ -146,114 +261,8 @@ fn delimiter(inp: &str) -> IResult<&str, ()> {
 fn number<'inp>(inp: &'inp str) -> IResult<&'inp str, Token> {
     use num::{BigInt, Num, Zero};
 
-    // radix and exactness written as functions so they can be copied in
-    // prefix.
-    fn radix(inp: &str) -> nom::IResult<&str, u32> {
-        map(preceded(tag("#"), one_of("bBoOdDxX")), |c| match c {
-            'b' | 'B' => 2u32,
-            'o' | 'O' => 8,
-            'd' | 'D' => 10,
-            'x' | 'X' => 16,
-            _ => unreachable!(),
-        })(inp)
-    }
-    fn exactness(inp: &str) -> nom::IResult<&str, Exactness> {
-        map(preceded(tag("#"), one_of("eEiI")), |c| match c {
-            'e' | 'E' => Exactness::Exact,
-            'i' | 'I' => Exactness::Inexact,
-            _ => unreachable!(),
-        })(inp)
-    }
-    let prefix = alt((
-        map(pair(radix, exactness), |(b, e)| (b, Some(e))),
-        map(pair(exactness, radix), |(e, b)| (b, Some(e))),
-        map(radix, |b| (b, None)),
-        map(exactness, |e| (10, Some(e))),
-        success((10, None)),
-    ));
-
-    let num = flat_map(prefix, |(base, exactness)| {
-        let uinteger_raw = move |inp: &'inp str| match base {
-            2 => re_find(nom::regex::Regex::new("^[01]+").unwrap())(inp),
-            8 => oct_digit1(inp),
-            10 => digit1(inp),
-            16 => hex_digit1(inp),
-            _ => unreachable!(),
-        };
-        let uinteger = map_opt(uinteger_raw, move |digits|
-            BigInt::from_str_radix(digits, base).ok());
-        /*
-        let mut decimal = map_opt(re_capture(nom::regex::regex::new(
-                r"^([0-9]*)(\.([0-9])*)?([ee]([+-]?[0-9]+))?"
-            ).unwrap()), |s| f64::from_str(s).ok()
-                .and_then(bigrational::from_f64).map(|n|
-                    number {
-                        exactness: exactness::inexact,
-                        value: n
-                    }
-                )
-        );
-        */
-        let float_re = nom::regex::Regex::new(
-            r"^([0-9]*)(\.([0-9]*))?([eE]([+-]?[0-9]+))?").unwrap();
-
-        // This is really messy.
-        let decimal = map_opt(re_capture(float_re.clone()), move |c_raw|
-        {
-                let c = float_re.captures(c_raw[0]).unwrap();
-                if
-                    base != 10 ||
-                    c.get(1).unwrap().as_str().len() == 0 &&
-                    c.get(3).map_or(true, |m| m.as_str().len() == 0) ||
-                    c.get(2).is_none() && c.get(4).is_none()
-                {
-                    None
-                } else {
-                    let integral_str = c.get(1).unwrap().as_str();
-                    let mut integral = if integral_str.len() > 0
-                        {BigInt::from_str_radix(integral_str, 10).unwrap()}
-                        else {BigInt::zero()};
-                    let fractional = c.get(3).map_or(
-                        BigInt::zero(),
-                        |s| if s.as_str().len() > 0 {
-                            BigInt::from_str_radix(s.as_str(), 10).unwrap()}
-                            else {BigInt::zero()}
-                    );
-                    let frac_len = c.get(3).map_or(0, |s| s.end() -
-                        s.start());
-                    integral = integral * BigInt::from_u32(10)?
-                        .pow(frac_len.to_u32()?) + fractional;
-                    let exponent = c.get(5).map_or(0,
-                        |s| isize::from_str(s.as_str()).unwrap());
-                    let total_exponent = exponent.to_i32()?
-                        .checked_sub(frac_len.to_i32()?)?;
-                    let rational = BigRational::from_integer(integral) *
-                        BigRational::from_u32(10)?.pow(total_exponent);
-                    Some((Exactness::Inexact, rational))
-                }
-        });
-        let ureal = alt((
-            decimal,
-            map(uinteger,
-                |n| (Exactness::Exact, n.into())
-            ),
-        ));
-        let sign = map(opt(one_of("+-")), |s| match s {
-            Some('+') | None => 1i32,
-            Some('-') => -1i32,
-            _ => unreachable!(),
-        });
-        let real = map(pair(sign, ureal), |(s, (e, mut value))| {
-            value = value * BigRational::from_integer(s.into());
-            (e, value)
-        });
-
-        map(real, move |mut n| {
-            n.0 = exactness.unwrap_or(n.0);
-            let num = Number::big_rational(n.1, n.0);
-            Token::Number(num)
-        })
-    });
+    let num = flat_map(prefix, |(base, exactness)| move |inp| real(base,
+        exactness, inp));
 
     // For compatibility with old version of number lexer incorporate sign
     // identifier
