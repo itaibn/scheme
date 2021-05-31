@@ -2,7 +2,9 @@
 use std::cmp;
 
 use maplit::hashmap;
+use num::Zero;
 
+use crate::number::Number;
 use crate::runtime::{self,
     Continuation,
     Environment,
@@ -225,16 +227,16 @@ fn min(args: Vec<Scheme>) -> Result<Scheme, Error> {
     Ok(Scheme::int(min))
 }
 
-fn sum(args: Vec<Scheme>) -> Result<Scheme, Error> {
-    let mut total = 0;
+fn plus(args: Vec<Scheme>) -> Result<Scheme, Error> {
+    let mut total = Number::zero();
     for arg in args {
-        if let Some(n) = arg.as_int() {
-            total += n;
+        if let Some(n) = arg.as_number() {
+            total = total + n;
         } else {
             return Err(Error);
         }
     }
-    Ok(Scheme::int(total))
+    Ok(Scheme::number(total))
 }
 
 fn times(args: Vec<Scheme>) -> Result<Scheme, Error> {
@@ -694,7 +696,7 @@ pub fn initial_environment() -> Environment {
         "even?" => simple(is_even),
         "max" => simple(max),
         "min" => simple(min),
-        "+" => simple(sum),
+        "+" => simple(plus),
         "*" => simple(times),
         "-" => simple(minus),
         "not" => simple(not),

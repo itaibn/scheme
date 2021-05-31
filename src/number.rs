@@ -3,7 +3,7 @@ use std::ops::{Add, Sub, Neg, Mul, Div, Rem};
 
 use gc;
 
-use num::{BigRational, Complex, FromPrimitive, ToPrimitive};
+use num::{BigRational, Complex, One, FromPrimitive, ToPrimitive, Zero};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, gc::Finalize)]
 pub enum Exactness {
@@ -11,6 +11,7 @@ pub enum Exactness {
     Inexact
 }
 
+// TODO: Default PartialEq is incorrect
 #[derive(Clone, Debug, PartialEq, gc::Finalize)]
 pub enum Number {
     Exact(Complex<BigRational>),
@@ -123,12 +124,6 @@ impl ToPrimitive for Number {
     }
 }
 
-#[test]
-fn test_number_from_f32() {
-    assert!(Number::from_f32(0.1).unwrap().is_inexact());
-    assert_eq!(Number::from_f32(0.1), Number::from_f64(0.1f32 as f64));
-}
-
 macro_rules! impl_binary_ops {
     { $(($optrait:ident, $opname:ident)),* } => {
         $(
@@ -143,7 +138,7 @@ macro_rules! impl_binary_ops {
                         },
                         (_, _) => {
                             let a = self.to_inexact_complex();
-                            let b = self.to_inexact_complex();
+                            let b = other.to_inexact_complex();
                             let res = $optrait::$opname(a, b);
                             Number::from_inexact_complex(res)
                         },
@@ -186,6 +181,8 @@ impl_binary_ops! {
     (Rem, rem)
 }
 
+// TODO: Implement OpAssign
+
 impl<'a> Neg for &'a Number {
     type Output = Number;
 
@@ -205,32 +202,48 @@ impl Neg for Number {
     }
 }
 
-/*
-macro_rules! make_binary_op {
-    ($optrait:ident, $opname:ident, $fst:ty, $snd:ty, $out:ty) => {
-        impl $optrait<$snd> for $fst {
-            type Output = $out;
+impl Zero for Number {
+    fn zero() -> Number {
+        Number::from_exact_complex(Complex::<_>::zero())
+    }
 
-            fn $opname(self, other: $snd) -> $out {
-                $optrait::$opname(&self, &other)
-            }
+    fn is_zero(&self) -> bool {
+        match self {
+            Number::Exact(ref n) => n.is_zero(),
+            Number::Inexact(ref n) => n.is_zero(),
         }
-
-        impl<'a> $optrait<&'a $snd> for $fst {
-            type Output = $out;
-
-            fn $opname(self, other: &'a $snd) -> $out {
-                $optrait::$opname(&self, other)
-            }
-        }
-
-        impl<'a> $optrait<$snd> for &'a $fst {
-            type Output = $out;
-
-            fn $opname(self, other: $snd) -> $out {
-                $optrait::$opname(self, &other)
-            }
-        }
-    };
+    }
 }
-*/
+
+impl One for Number {
+    fn one() -> Number {
+        Number::from_exact_complex(Complex::<_>::one())
+    }
+
+    fn is_one(&self) -> bool {
+        match self {
+            Number::Exact(ref n) => n.is_one(),
+            Number::Inexact(ref n) => n.is_one(),
+        }
+    }
+}
+
+#[test]
+fn test_number_from_f32() {
+    assert!(Number::from_f32(0.1).unwrap().is_inexact());
+    assert_eq!(Number::from_f32(0.1), Number::from_f64(0.1f32 as f64));
+}
+
+#[test]
+fn test_zero() {
+    assert!(Number::zero().is_exact());
+    assert_eq!(Number::zero().to_inexact_complex(), Complex::<f64>::zero());
+}
+
+#[test]
+fn test_inexact_sum() {
+    let x = Number::from_f64(1.5).unwrap();
+    let y = Number::from_f64(3.0).unwrap();
+    assert_eq!(&x + &x, y);
+    assert_eq!(&(Number::zero() + &x), &x);
+}

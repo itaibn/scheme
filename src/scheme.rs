@@ -355,14 +355,28 @@ mod test {
     use crate::read::read;
     use super::Scheme;
 
-    fn comparison(input: &str, output: Scheme) {
+    fn comparison(input: &str, expected: Scheme) {
         let expr = read(input).unwrap();
-        assert!(expr.eval(&initial_environment()).unwrap().equal(&output));
+        let actual = expr.eval(&initial_environment()).unwrap();
+        assert!(actual.equal(&expected),
+    "Test case failed.\n    Program: {}\n    Expected: {:?}\n    Actual: {:?}",
+            input, &expected, &actual);
+    }
+
+    #[test]
+    fn test_float() {
+        use crate::number::Number;
+        use num::FromPrimitive;
+        comparison("1.5", Scheme::number(Number::from_f64(1.5).unwrap()));
     }
 
     #[test]
     fn test_sums() {
+        use crate::number::Number;
+        use num::FromPrimitive;
         comparison("(+ 1 5 (+ 20) 1)", Scheme::int(27));
+        comparison("(+ 1.5 1.5)",
+            Scheme::number(Number::from_f64(3.0).unwrap()));
     }
 
     #[test]
