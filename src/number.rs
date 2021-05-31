@@ -1,5 +1,17 @@
 
-use std::ops::{Add, Sub, Neg, Mul, Div, Rem};
+use std::ops::{
+    Add,
+    AddAssign,
+    Sub,
+    SubAssign,
+    Neg,
+    Mul,
+    MulAssign,
+    Div,
+    DivAssign,
+    Rem,
+    RemAssign
+};
 
 use gc;
 
@@ -125,7 +137,8 @@ impl ToPrimitive for Number {
 }
 
 macro_rules! impl_binary_ops {
-    { $(($optrait:ident, $opname:ident)),* } => {
+    { $(($optrait:ident, $opname:ident, $opasstrait:ident,
+            $opassname:ident)),* } => {
         $(
             impl<'a,'b> $optrait<&'b Number> for &'a Number {
                 type Output = Number;
@@ -136,7 +149,7 @@ macro_rules! impl_binary_ops {
                             let res = $optrait::$opname(a, b);
                             Number::from_exact_complex(res)
                         },
-                        (_, _) => {
+                        _ => {
                             let a = self.to_inexact_complex();
                             let b = other.to_inexact_complex();
                             let res = $optrait::$opname(a, b);
@@ -169,16 +182,40 @@ macro_rules! impl_binary_ops {
                     $optrait::$opname(&self, &other)
                 }
             }
+
+            impl<'a> $opasstrait<&'a Number> for Number {
+                fn $opassname(&mut self, other: &'a Number) {
+                
+                    match (self, other) {
+                        (Number::Exact(ref mut a), &Number::Exact(ref b)) => {
+                            $opasstrait::$opassname(a, b);
+                        },
+                        (mut a@Number::Exact(_), b@&Number::Inexact(_)) =>
+                        {
+                            *a = $optrait::$opname(&*a, b);
+                        }
+                        (Number::Inexact(ref mut a), b) => {
+                            $opasstrait::$opassname(a, b.to_inexact_complex());
+                        }
+                    }
+                }
+            }
+
+            impl $opasstrait<Number> for Number {
+                fn $opassname(&mut self, other: Number) {
+                    $opasstrait::$opassname(self, &other);
+                }
+            }
         )*
     }
 }
 
 impl_binary_ops! {
-    (Add, add),
-    (Sub, sub),
-    (Mul, mul),
-    (Div, div),
-    (Rem, rem)
+    (Add, add, AddAssign, add_assign),
+    (Sub, sub, SubAssign, sub_assign),
+    (Mul, mul, MulAssign, mul_assign),
+    (Div, div, DivAssign, div_assign),
+    (Rem, rem, RemAssign, rem_assign)
 }
 
 // TODO: Implement OpAssign

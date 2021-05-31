@@ -231,7 +231,7 @@ fn plus(args: Vec<Scheme>) -> Result<Scheme, Error> {
     let mut total = Number::zero();
     for arg in args {
         if let Some(n) = arg.as_number() {
-            total = total + n;
+            total += n;
         } else {
             return Err(Error);
         }
